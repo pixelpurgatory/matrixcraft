@@ -157,7 +157,7 @@ export class Player extends Actor {
       if (Math.abs(mv.x) > 0.05 || Math.abs(mv.y) > 0.05) {
         // camera-relative movement
         const ang = Math.atan2(mv.x, mv.y);
-        const dir = camYaw + Math.PI + ang; // forward = away from the camera
+        const dir = camYaw + Math.PI - ang; // forward = away from camera, right = screen right
         const spd = this.speed * speedMult * (1 - Math.min(0.6, slowed)) * Math.min(1, Math.hypot(mv.x, mv.y));
         let nx = this.pos.x + Math.sin(dir) * spd * dt;
         let nz = this.pos.z + Math.cos(dir) * spd * dt;
@@ -260,7 +260,7 @@ export class ThirdPersonCamera {
   zoom(dir) { this.targetDist = THREE.MathUtils.clamp(this.targetDist + dir * 1.2, 3.5, 14); }
 
   update(dt, look, playerPos, groundYFn) {
-    this.yaw -= look.dx * 0.0032;
+    this.yaw -= look.dx * 0.0032; // drag right = look right
     this.pitch = THREE.MathUtils.clamp(this.pitch + look.dy * 0.0028, -0.2, 1.2);
     this.dist += (this.targetDist - this.dist) * Math.min(1, dt * 8);
     const cy = Math.cos(this.pitch), sy = Math.sin(this.pitch);

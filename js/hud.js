@@ -333,7 +333,7 @@ export class HUD {
             ga.style.transform = 'rotate(180deg)';
           } else if (d > 8) {
             // edge arrow pointing toward it
-            const ang = Math.atan2(guide.pos.x - p.pos.x, guide.pos.z - p.pos.z) - this.game.cam.yaw + Math.PI;
+            const ang = this.game.cam.yaw + Math.PI - Math.atan2(guide.pos.x - p.pos.x, guide.pos.z - p.pos.z);
             const R = Math.min(innerWidth, innerHeight) * 0.38;
             ga.style.display = 'block';
             ga.style.left = (innerWidth / 2 + Math.sin(ang) * R - 9) + 'px';
@@ -412,15 +412,15 @@ export class HUD {
     const k = (S / (range * 2)) / (256 / size); // cache px -> minimap px
     ctx.save();
     ctx.translate(S / 2, S / 2);
-    ctx.rotate(-(-g.cam.yaw + Math.PI));
+    ctx.rotate(g.cam.yaw);
     ctx.scale(k, k);
     ctx.translate(-(p.pos.x / size + 0.5) * 256, -(p.pos.z / size + 0.5) * 256);
     ctx.drawImage(cache, 0, 0);
     ctx.restore();
     const toMap = (x, z) => {
-      // rotate by camera yaw so up = forward
+      // rotate by camera yaw so up = forward (forward = yaw + PI)
       const dx = x - p.pos.x, dz = z - p.pos.z;
-      const cy = Math.cos(-g.cam.yaw + Math.PI), sy = Math.sin(-g.cam.yaw + Math.PI);
+      const cy = Math.cos(g.cam.yaw), sy = Math.sin(g.cam.yaw);
       const rx = dx * cy - dz * sy, rz = dx * sy + dz * cy;
       return [S / 2 + rx / range * S / 2, S / 2 + rz / range * S / 2];
     };
