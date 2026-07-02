@@ -92,6 +92,9 @@ export class GameAudio {
       case 'death': this._osc('sawtooth', 150, 30, 2, 0.25); break;
       case 'pvp': [392, 523, 659].forEach((f, i) => this._osc('square', f, f, 0.25, 0.1, i * 0.08)); break;
       case 'ui': this._osc('sine', 800, 950, 0.06, 0.08); break;
+      case 'nova': this._noise(0.3, 0.3, 5000); this._osc('sine', 1200, 300, 0.4, 0.2); this._osc('triangle', 1800, 500, 0.3, 0.1, 0.05); break;
+      case 'zap': this._osc('sawtooth', 900, 1400, 0.09, 0.1); this._noise(0.05, 0.1, 4000); break;
+      case 'meteor': this._noise(0.25, 0.3, 700); this._osc('sine', 220, 50, 0.3, 0.25); break;
     }
   }
 

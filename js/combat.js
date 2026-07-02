@@ -49,6 +49,14 @@ export class Actor {
 
     this.group = def.model || buildModel(def.modelKind || 'humanoid', def.color || 0x888888, def.modelOpts || {});
     this.group.add(blobShadow(this.isBoss ? 1.2 : 0.6));
+    // generous invisible hitbox so cursor targeting feels WoW-forgiving
+    const hb = new THREE.Mesh(new THREE.CylinderGeometry(0.85, 0.85, 2.4, 6),
+      new THREE.MeshBasicMaterial({ visible: false }));
+    hb.position.y = 1.2;
+    hb.userData.actorRef = this;
+    this.group.add(hb);
+    this.hitboxMesh = hb;
+    this._baseScale = 1;
     this.anim = new Animator(this.group);
     if (def.pos) this.group.position.set(def.pos.x, 0, def.pos.z);
     game.scene.add(this.group);
@@ -145,6 +153,10 @@ export class Actor {
       const color = opts.crit ? '#ffdd33' : (source === this.game.player || source?.owner === this.game.player) ? '#ffffff' : '#ff6655';
       this.game.vfx.floater(this.pos, String(dmg), color, opts.crit);
       this.anim.play('hit');
+      // physical feedback: the victim visibly pops and flashes
+      this._hitPop = opts.crit ? 0.32 : 0.2;
+      if (source === this.game.player)
+        this.game.vfx.impact(this.pos, opts.crit ? 0xffe066 : 0xffb469, opts.crit ? 2 : 1);
     }
     Events.emit('hp', this);
     if (this.onDamaged) this.onDamaged(source, dmg);
@@ -172,6 +184,7 @@ export class Actor {
   die(source) {
     this.alive = false;
     this.hp = 0;
+    this.group.scale.setScalar(this._baseScale || 1);
     this._unpoly();
     this.anim.play('death');
     this.buffs = []; this.dots = [];
@@ -199,6 +212,12 @@ export class Actor {
       this._lamb.rotation.y += dt * 2;
     }
     if (!this.ccd && this._polySwap) this._unpoly();
+    // hit pop decay
+    if (this._hitPop > 0) {
+      this._hitPop = Math.max(0, this._hitPop - dt * 1.6);
+      const s = this._baseScale * (1 + this._hitPop * 0.55);
+      this.group.scale.setScalar(s);
+    }
   }
 
   destroy() {
@@ -208,11 +227,54 @@ export class Actor {
 }
 
 // ---------------- VFX ----------------
+let _glowTex = null;
+export function glowTex() {
+  if (_glowTex) return _glowTex;
+  const cv = document.createElement('canvas'); cv.width = cv.height = 64;
+  const ctx = cv.getContext('2d');
+  const g = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+  g.addColorStop(0, 'rgba(255,255,255,1)');
+  g.addColorStop(0.35, 'rgba(255,255,255,0.55)');
+  g.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, 64, 64);
+  _glowTex = new THREE.CanvasTexture(cv);
+  return _glowTex;
+}
+
 export class VFX {
   constructor(game) {
     this.game = game;
     this.live = [];
     this.floatersEl = null;
+  }
+
+  // layered impact: glow flash + shockwave ring + sparks. power ~ 1 normal, 2 heavy, 3 huge
+  impact(pos, color = 0xffcc66, power = 1) {
+    const p = pos.clone(); p.y += 1.1;
+    // core flash sprite
+    const spr = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: glowTex(), color, transparent: true, opacity: 0.95,
+      blending: THREE.AdditiveBlending, depthWrite: false }));
+    spr.position.copy(p);
+    spr.scale.setScalar(0.6 * power);
+    this.game.scene.add(spr);
+    this.live.push({ obj: spr, t: 0, life: 0.22, tick: (fx) => {
+      spr.scale.setScalar((0.6 + fx.t * 14) * power * 0.6);
+      spr.material.opacity = 0.95 * (1 - fx.t / fx.life);
+    } });
+    // white hot center
+    const core = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: glowTex(), color: 0xffffff, transparent: true, opacity: 1,
+      blending: THREE.AdditiveBlending, depthWrite: false }));
+    core.position.copy(p);
+    core.scale.setScalar(0.3 * power);
+    this.game.scene.add(core);
+    this.live.push({ obj: core, t: 0, life: 0.1, tick: (fx) => {
+      core.scale.setScalar((0.3 + fx.t * 8) * power);
+      core.material.opacity = 1 - fx.t / fx.life;
+    } });
+    this.burst(pos, color, Math.round(8 * power + 4), 0.16 + power * 0.05, 4 + power * 2.5, 0.45);
+    if (power >= 1.5) this.ring(pos, color, 2 + power, 0.35);
   }
 
   floater(pos, text, color = '#fff', crit = false) {
@@ -367,6 +429,93 @@ export class VFX {
     } });
   }
 
+  // frost nova: expanding ice shockwave + frost decal + crystal spikes
+  frostNova(pos, radius) {
+    const y = this.game.groundY(pos) + 0.15;
+    // expanding double shockwave
+    this.ring(new THREE.Vector3(pos.x, y, pos.z), 0xbfeaff, radius, 0.4, 0.05);
+    this.ring(new THREE.Vector3(pos.x, y, pos.z), 0x6fd0ff, radius * 0.8, 0.55, 0.12);
+    // frost decal lingers
+    const decal = new THREE.Mesh(new THREE.CircleGeometry(radius, 26),
+      new THREE.MeshBasicMaterial({ color: 0x9fdfff, transparent: true, opacity: 0.28, depthWrite: false }));
+    decal.rotation.x = -Math.PI / 2; decal.position.set(pos.x, y - 0.04, pos.z);
+    this.game.scene.add(decal);
+    this.live.push({ obj: decal, t: 0, life: 2.4, tick: (fx) => { decal.material.opacity = 0.28 * (1 - fx.t / fx.life); } });
+    // ice spikes burst up in a ring
+    for (let i = 0; i < 10; i++) {
+      const a = (i / 10) * Math.PI * 2 + Math.random() * 0.3;
+      const d = radius * (0.45 + Math.random() * 0.5);
+      const spike = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.9, 5),
+        new THREE.MeshBasicMaterial({ color: 0xd8f4ff, transparent: true, opacity: 0.95 }));
+      spike.position.set(pos.x + Math.cos(a) * d, y - 0.4, pos.z + Math.sin(a) * d);
+      spike.rotation.z = (Math.random() - 0.5) * 0.4;
+      this.game.scene.add(spike);
+      this.live.push({ obj: spike, t: 0, life: 0.9, tick: (fx) => {
+        spike.position.y = y - 0.4 + Math.min(1, fx.t * 6) * 0.75;
+        spike.material.opacity = 0.95 * (1 - Math.max(0, fx.t - 0.5) / 0.4);
+      } });
+    }
+    this.burst(pos, 0xbfeaff, 24, 0.2, 8, 0.6);
+    this.impact(pos, 0x9fdfff, 2);
+  }
+
+  // small persistent ice shackle under a rooted enemy
+  rootRing(actor, dur) {
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.5, 0.72, 16),
+      new THREE.MeshBasicMaterial({ color: 0x9fdfff, transparent: true, opacity: 0.85, depthWrite: false, depthTest: false, side: THREE.DoubleSide }));
+    ring.rotation.x = -Math.PI / 2;
+    ring.renderOrder = 2;
+    this.game.scene.add(ring);
+    this.live.push({ obj: ring, t: 0, life: dur, tick: (fx, dt) => {
+      ring.position.set(actor.pos.x, this.game.groundY(actor.pos) + 0.06, actor.pos.z);
+      ring.rotation.z += dt * 2;
+      ring.material.opacity = actor.alive ? 0.85 * (1 - fx.t / fx.life * 0.5) : 0;
+    } });
+  }
+
+  // meteor: streak falls from the sky into an impact
+  meteor(target, dmgFn, delay = 0) {
+    this.game.schedule(delay, () => {
+      const from = target.clone().add(new THREE.Vector3(3 + Math.random() * 2, 14, 2 + Math.random()));
+      const rock = new THREE.Mesh(new THREE.SphereGeometry(0.28, 6, 5),
+        new THREE.MeshBasicMaterial({ color: 0xffaa44 }));
+      const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex(), color: 0xff7722,
+        transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false }));
+      halo.scale.setScalar(2.2);
+      rock.add(halo);
+      rock.position.copy(from);
+      this.game.scene.add(rock);
+      const dir = target.clone().sub(from);
+      const dur = 0.34;
+      this.live.push({ obj: rock, t: 0, life: dur, tick: (fx) => {
+        rock.position.copy(from).addScaledVector(dir, fx.t / dur);
+        if (fx.t + 0.02 >= dur) {
+          this.impact(target, 0xff7733, 2.2);
+          this.game.shake(0.18);
+          dmgFn?.();
+        }
+      } });
+    });
+  }
+
+  // scorched-earth decal after fire abilities
+  scorch(pos, radius, dur = 3.5) {
+    const y = this.game.groundY(pos) + 0.08;
+    const decal = new THREE.Mesh(new THREE.CircleGeometry(radius, 24),
+      new THREE.MeshBasicMaterial({ color: 0x1a0d06, transparent: true, opacity: 0.55, depthWrite: false }));
+    decal.rotation.x = -Math.PI / 2; decal.position.set(pos.x, y, pos.z);
+    const glow = new THREE.Mesh(new THREE.RingGeometry(radius * 0.4, radius * 0.9, 22),
+      new THREE.MeshBasicMaterial({ color: 0xff5522, transparent: true, opacity: 0.35,
+        blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+    glow.rotation.x = -Math.PI / 2; glow.position.set(pos.x, y + 0.02, pos.z);
+    this.game.scene.add(decal, glow);
+    this.live.push({ obj: decal, extra: [glow], t: 0, life: dur, tick: (fx, dt) => {
+      const f = 1 - fx.t / fx.life;
+      decal.material.opacity = 0.55 * f;
+      glow.material.opacity = 0.35 * f * (0.7 + Math.sin(fx.t * 9) * 0.3);
+    } });
+  }
+
   // melee swing arc: a glowing crescent that sweeps with the blow
   swingArc(actor, color = 0xffe0aa) {
     const geo = new THREE.TorusGeometry(1.5, 0.09, 4, 14, 2.4);
@@ -421,7 +570,12 @@ export class Projectiles {
       : new THREE.SphereGeometry(size, 6, 5);
     const m = new THREE.Mesh(geo, basicMat(opts.color || 0xffffff));
     m.position.copy(opts.from);
-    const light = null; // keep lights off projectiles for perf
+    // additive glow halo makes every bolt read as a projectile at a glance
+    const halo = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: glowTex(), color: opts.color || 0xffffff, transparent: true, opacity: 0.85,
+      blending: THREE.AdditiveBlending, depthWrite: false }));
+    halo.scale.setScalar(size * 7);
+    m.add(halo);
     this.game.scene.add(m);
     this.live.push({ mesh: m, ...opts, t: 0 });
   }
@@ -644,8 +798,11 @@ export class SkillRunner {
         vfx.burst(hitPos, skill.fx?.color || 0xff7733, 14, 0.2, 7);
         this._aoeAround(hitPos, aoe, m => { this._dealDamage(skill, m, dmgEach); applyOnHit(m); });
       } else if (tgt?.alive) {
-        vfx.burst(tgt.pos, skill.fx?.color || 0xffffff, 8, 0.16, 5);
+        vfx.impact(tgt.pos, skill.fx?.color || 0xffffff, skill.id === 'fireball' ? 2.4 : 1);
         this._dealDamage(skill, tgt, dmgEach);
+        if (skill.dot && tgt.alive)
+          tgt.addDot({ amount: Math.round(skill.dot.dmg({ power: this.actor.power }) * this._dmgMult()), interval: skill.dot.interval, ticks: skill.dot.ticks }, this.actor);
+        if (skill.id === 'fireball') { g.shake(0.2); vfx.scorch(tgt.pos, 1.6, 2); }
         applyOnHit(tgt);
       }
     };
@@ -778,6 +935,45 @@ export class SkillRunner {
         if (skill.id === 'war_cry' && this.hasTalent('avatar')) a.addBuff({ id: 'avatar', name: 'Avatar of Wrath', icon: '👹', dur, stat: 'dmg', amt: 0.25 });
         if (skill.fx?.nova) vfx.ring(a.pos, skill.fx.nova, 8, 0.6);
         if (skill.fx?.aura) vfx.aura(a, skill.fx.aura, 1.4);
+        break;
+      }
+      // ---- frost nova: point-blank freeze ----
+      case !!skill.nova: {
+        a.anim.play('castRelease');
+        vfx.frostNova(a.pos.clone(), skill.nova.radius);
+        g.shake(0.25);
+        g.audio?.play('nova');
+        this._aoeAround(a.pos, skill.nova.radius, m => {
+          this._dealDamage(skill, m, skill.dmg(ctx));
+          if (m.alive) {
+            m.rootUntil = g.time + skill.nova.rootDur;
+            m.addBuff({ id: 'frozen', name: 'Frozen', icon: '\u2744\ufe0f', dur: skill.nova.rootDur });
+            vfx.rootRing(m, skill.nova.rootDur);
+            vfx.floater(m.pos, 'FROZEN', '#9fdfff');
+          }
+        });
+        break;
+      }
+      // ---- rain of fire: channel meteors onto marked ground ----
+      case !!skill.rain: {
+        const pos = groundPos.clone();
+        pos.y = g.groundY(pos);
+        a.anim.play('cast', skill.rain.delay + 0.2);
+        g.schedule(skill.rain.delay, () => a.alive && a.anim.play('castRelease'));
+        vfx.telegraph(pos, skill.rain.radius, skill.rain.delay, 0xff4422);
+        g.schedule(skill.rain.delay + 0.4, () => vfx.scorch(pos, skill.rain.radius, skill.rain.waves * skill.rain.interval + 1.5));
+        for (let w = 0; w < skill.rain.waves; w++) {
+          const at = skill.rain.delay + w * skill.rain.interval;
+          // each wave: 2 meteors at random points + area damage
+          for (let k = 0; k < 2; k++) {
+            const ang = Math.random() * 6.28, dd = Math.random() * skill.rain.radius * 0.85;
+            const hitAt = new THREE.Vector3(pos.x + Math.cos(ang) * dd, pos.y, pos.z + Math.sin(ang) * dd);
+            vfx.meteor(hitAt, null, at + k * 0.12);
+          }
+          g.schedule(at + 0.34, () => {
+            this._aoeAround(pos, skill.rain.radius, m => this._dealDamage(skill, m, skill.dmg(ctx)));
+          });
+        }
         break;
       }
       // ---- cc ----

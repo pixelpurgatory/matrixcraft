@@ -50,7 +50,7 @@ export class Mob extends Actor {
     if (def.ranged) this.ranged = true;
     if (def.translucent) this.missChance = 0.25;
     if (def.armored) this.armored = true;
-    if (this.isBoss) this.group.scale.multiplyScalar(1.6);
+    if (this.isBoss) { this.group.scale.multiplyScalar(1.6); this._baseScale = 1.6; }
     this.anim.baseY = 0;
     this.mechanics = opts.bossDef?.mechanics || [];
     this.mechTimers = {};

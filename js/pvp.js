@@ -113,49 +113,10 @@ export class ArenaBot extends Actor {
   }
 
   _chooseSkill(foe, d) {
-    const hpPct = this.hp / this.maxHp;
-    const foePct = foe.hp / foe.maxHp;
-    const c = this.classId;
-    // defensive layer
-    if (hpPct < 0.45) {
-      if (c === 'mage' && (this._try('frost_ward', foe) || this._try('time_anchor', foe))) return;
-      if (c === 'barbarian' && (this._try('unbreakable', foe) || this._try('bloodthirst', foe))) return;
-      if (c === 'hunter' && this._try('med_drone', foe)) return;
-    }
-    // escape when melee'd (ranged classes)
-    if (this.cls.ranged && d < 5) {
-      if (c === 'mage' && this._try('blink', foe)) return;
-      if (c === 'hunter' && this._try('booster_dash', foe)) return;
-    }
-    // gap close (melee)
-    if (c === 'barbarian' && d > 8 && this._try('charge', foe)) return;
-    if (c === 'barbarian' && d > 6 && this._try('heroic_leap', foe)) return;
-    // burst windows
-    if (c === 'mage') {
-      if (foePct < 0.6 && this._try('glitch_lamb', foe)) return;
-      const brand = foe.buffs.find(b => b.id === 'brand');
-      if (brand?.stacks >= 3 && this._try('ember_nova', foe)) return;
-      if (this._try('comet_call', foe)) return;
-      if (this._try('pyroclasm', foe)) return;
-      if (this._try('icicle_barrage', foe)) return;
-      this._try('frostfire_bolt', foe);
-    } else if (c === 'barbarian') {
-      if (d < 4) {
-        if (foePct < 0.35 && this._try('execute', foe)) return;
-        if (this._try('war_cry', foe)) return;
-        if (this._try('skullsplitter', foe)) return;
-        if (this._try('rampage', foe)) return;
-        if (this._try('whirlwind', foe)) return;
-        this._try('cleave', foe);
-      }
-    } else {
-      if (this._try('overclock', foe)) return;
-      if (this._try('turret', foe)) return;
-      if (d < 8 && this._try('shrapnel_trap', foe)) return;
-      if (this._try('explosive_round', foe)) return;
-      if (this._try('deadeye_volley', foe)) return;
-      this._try('rifle_shot', foe);
-    }
+    // 4-ability duel brain: freeze when pressured, rain the zone, fireball as filler
+    if (d < 6 && this._try('frost_nova', foe)) return;
+    if (this._try('rain_of_fire', foe)) return;
+    this._try('fireball', foe);
   }
 
   onDeath() { this.game.arena?.onBotDeath(); }

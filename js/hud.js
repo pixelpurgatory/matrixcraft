@@ -50,6 +50,10 @@ export class HUD {
       <div id="interact"></div>
       <div id="gamelog"></div>
       <div id="floaters"></div>
+      <div id="nameplates" style="position:absolute;inset:0;pointer-events:none;overflow:hidden"></div>
+      <div id="crosshair" style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:none;pointer-events:none">
+        <div style="width:5px;height:5px;border-radius:50%;background:#ffe9a8;box-shadow:0 0 5px #000,0 0 3px #ffd97e"></div>
+      </div>
     `;
     this._buildActionBar();
     this._buildSysButtons();
@@ -139,16 +143,18 @@ export class HUD {
       b.addEventListener('touchstart', (e) => { e.preventDefault(); p.useSkill(i); }, { passive: false });
       wrap.appendChild(b);
     };
-    // big main attack (skill 1 on the bar)
-    mkSkill(0, 88, cx, cy);
-    // inner arc: skills 2–5
-    [1, 2, 3, 4].forEach((idx, k) => {
-      const [r, b] = polar(118, 2 + k * 29.5);
-      mkSkill(idx, 60, r, b);
+    // main button = primary damage skill (index 1 if it exists, else 0)
+    const n = p.cls.skills.length;
+    const mainIdx = n > 1 ? 1 : 0;
+    mkSkill(mainIdx, 88, cx, cy);
+    const rest = [...Array(n).keys()].filter(i => i !== mainIdx);
+    const inner = rest.slice(0, 4), outer = rest.slice(4);
+    inner.forEach((idx, k) => {
+      const [r, b] = polar(118, inner.length > 1 ? 2 + k * (88 / (inner.length - 1)) : 45);
+      mkSkill(idx, 62, r, b);
     });
-    // outer arc: skills 6–10
-    [5, 6, 7, 8, 9].forEach((idx, k) => {
-      const [r, b] = polar(188, 0 + k * 23);
+    outer.forEach((idx, k) => {
+      const [r, b] = polar(188, outer.length > 1 ? k * (92 / (outer.length - 1)) : 45);
       mkSkill(idx, 52, r, b);
     });
     // utilities: jump + cycle-target, tucked left of the cluster
@@ -299,6 +305,7 @@ export class HUD {
         if (left > 0) { cd.style.display = 'flex'; cd.textContent = left > 1 ? Math.ceil(left) : left.toFixed(1); el.classList.add('oncd'); }
         else { cd.style.display = 'none'; el.classList.remove('oncd'); }
         el.classList.toggle('no-res', !p.runner.canAfford(s));
+        el.classList.toggle('auto-on', !!s.autoToggle && p.autoOn);
         el.style.opacity = onGcd && left <= 0 ? 0.55 : 1;
       }
     });
@@ -365,6 +372,38 @@ export class HUD {
         left:${(v.x * 0.5 + 0.5) * 100}%;top:${(-v.y * 0.5 + 0.5) * 100}%`;
       d.textContent = b.text;
       bubbleWrap.appendChild(d);
+    }
+
+    // ---- crosshair when the mouse is locked ----
+    const ch = document.getElementById('crosshair');
+    if (ch) ch.style.display = this.input.locked ? 'block' : 'none';
+
+    // ---- enemy nameplates (target + anyone fighting you + nearby bosses) ----
+    const np = document.getElementById('nameplates');
+    if (np) {
+      let html = '';
+      let count = 0;
+      for (const m of g.mobs) {
+        if (!m.alive || count >= 8) continue;
+        const isTarget = m === g.target;
+        const fighting = m.state === 'chase';
+        if (!isTarget && !fighting && !m.isBoss) continue;
+        const d = p.distTo(m);
+        if (d > (m.isBoss ? 60 : 34)) continue;
+        const v = m.pos.clone(); v.y += (m.isBoss ? 3.6 : 2.5);
+        v.project(g.engine.camera);
+        if (v.z > 1 || Math.abs(v.x) > 1.05 || Math.abs(v.y) > 1.05) continue;
+        const sx = (v.x * 0.5 + 0.5) * 100, sy = (-v.y * 0.5 + 0.5) * 100;
+        const hpp = Math.max(0, m.hp / m.maxHp);
+        html += `<div style="position:absolute;left:${sx}%;top:${sy}%;transform:translate(-50%,-100%);text-align:center;min-width:76px">
+          <div style="font-size:${isTarget ? 12 : 10}px;color:${m.isBoss ? '#ffb3a7' : isTarget ? '#ffd97e' : '#ffb0a0'};
+            text-shadow:0 1px 3px #000;white-space:nowrap;font-weight:${isTarget ? 700 : 400}">${m.name} <span style="opacity:.7">${m.isBoss ? '☠' : m.level}</span></div>
+          <div style="height:${isTarget ? 6 : 4}px;background:#111;border:1px solid ${isTarget ? '#ffb040' : '#000'};border-radius:2px;overflow:hidden;margin-top:1px">
+            <div style="height:100%;width:${(hpp * 100).toFixed(0)}%;background:linear-gradient(#e0574e,#8f231d)"></div></div>
+        </div>`;
+        count++;
+      }
+      np.innerHTML = html;
     }
 
     // ---- minimap (2 Hz) ----

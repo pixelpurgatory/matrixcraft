@@ -55,15 +55,17 @@ export class Input {
   _initMouse() {
     if (IS_TOUCH) return;
     const canvas = document.getElementById('game');
-    canvas.addEventListener('click', () => {
+    this.mouseX = innerWidth / 2; this.mouseY = innerHeight / 2;
+    canvas.addEventListener('click', (e) => {
+      this.fire('canvasclick', { x: e.clientX, y: e.clientY, locked: this.locked });
       if (!this.uiOpen && !this.locked) canvas.requestPointerLock?.();
-      this.fire('canvasclick');
     });
     document.addEventListener('pointerlockchange', () => {
       this.locked = document.pointerLockElement === canvas;
     });
     addEventListener('mousemove', (e) => {
       if (this.locked) { this.lookDX += e.movementX; this.lookDY += e.movementY; }
+      else { this.mouseX = e.clientX; this.mouseY = e.clientY; }
     });
     // right-drag camera when not locked (menus open etc.)
     let rd = false, lx = 0, ly = 0;

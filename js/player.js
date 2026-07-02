@@ -6,7 +6,8 @@ import { CLASSES, MAX_LEVEL, XP_TABLE, GEAR_SLOTS } from './data_classes.js';
 
 export class Player extends Actor {
   constructor(game, classId, save = null) {
-    const cls = CLASSES[classId];
+    const cls = CLASSES[classId] || CLASSES.mage;   // migrate saves from removed classes
+    classId = cls.id;
     super(game, {
       name: save?.name || 'The Anomaly',
       level: save?.level || 1,
@@ -37,6 +38,42 @@ export class Player extends Actor {
     this.grounded = true;
     this.autoTarget = null;
     this.gcdVisual = 0;
+    this.autoOn = false;
+    this.nextAuto = 0;
+  }
+
+  toggleAuto(on) {
+    this.autoOn = on ?? !this.autoOn;
+    this.game.log(this.autoOn ? '\u2694\ufe0f Auto-attack ON' : 'Auto-attack off.');
+    Events.emit('cooldowns');
+  }
+
+  // WoW-style auto attack: arcane staff bolts on a swing timer
+  _autoAttackTick() {
+    const g = this.game;
+    const t = g.target;
+    if (!this.autoOn || !t || !t.alive || t.faction !== 'hostile') return;
+    if (g.time < this.nextAuto || this.runner.casting || this.ccd || !this.alive) return;
+    if (this.distTo(t) > this.cls.attackRange + t.radius) return;
+    this.nextAuto = g.time + 1.6 / (1 + this.buffVal('haste'));
+    this.faceToward(t.pos.x, t.pos.z, true);
+    this.anim.play('castRelease', 0.24);
+    g.audio?.play('zap');
+    // staff-tip zap: beam flash + fast tracer bolt
+    const rig = this.group.userData.rig;
+    const from = this.pos.clone().setY(this.pos.y + 1.6);
+    if (rig?.weapon?.userData.tip) rig.weapon.userData.tip.getWorldPosition(from);
+    g.vfx.beam(from, t.pos.clone().setY(t.pos.y + 1.2), 0xc9a0ff, 0.09, 0.05);
+    g.projectiles.spawn({
+      from, target: t, speed: 44, color: 0xc9a0ff, size: 0.12,
+      onHit: (hp, tgt) => {
+        if (!tgt?.alive) return;
+        const crit = Math.random() < Balance.critChance(this.gearCrit || 0);
+        const skill = this.cls.skills[0];
+        let dmg = skill.dmg({ power: this.power }) * (1 + this.buffVal('dmg')) * (crit ? 1.5 : 1);
+        tgt.takeDamage(dmg, this, { crit });
+      },
+    });
   }
 
   // ---------- stats from gear ----------
@@ -183,6 +220,7 @@ export class Player extends Actor {
 
     this.anim.baseY = this.pos.y;
     this.anim.update(dt, moving);
+    this._autoAttackTick();
 
     // out-of-combat regen
     if (g.time > this.inCombat && this.alive && this.hp < this.maxHp) {
@@ -226,9 +264,17 @@ export class Player extends Actor {
       target = this.nearestEnemy(skill.range || 30);
       if (target) g.setTarget(target);
     }
+    if (skill.autoToggle) {
+      if (!g.target && target) g.setTarget(target);
+      this.toggleAuto();
+      return;
+    }
     const err = this.runner.use(skill, target, null);
     if (err && err !== 'dead' && err !== 'Not ready' && err !== 'Already casting') g.log(err);
-    else if (!err) g.audio?.play(skill.kind === 'mobility' ? 'dash' : this.cls.ranged ? 'cast' : 'swing');
+    else if (!err) {
+      g.audio?.play(skill.kind === 'mobility' ? 'dash' : this.cls.ranged ? 'cast' : 'swing');
+      if (skill.target === 'enemy' || skill.target === 'ground') this.autoOn = true; // casting joins the fight
+    }
   }
 
   onDeath(source) {

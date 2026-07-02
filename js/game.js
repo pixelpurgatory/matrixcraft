@@ -212,8 +212,45 @@ export class Game {
   schedule(delay, fn) { this.scheduled.push({ at: this.time + delay, fn }); }
 
   setTarget(t) {
+    if (t === this.target) { Events.emit('target', t); return; }
     this.target = t;
+    if (!this._selRing) this._buildSelectionRing();
+    if (t) {
+      this._selRing.visible = true;
+      this._selRingPop = 0.25;               // acquisition pop
+      this.audio.play('ui');
+    } else this._selRing.visible = false;
     Events.emit('target', t);
+  }
+
+  _buildSelectionRing() {
+    const g = new THREE.Group();
+    // soft red disc + crisp rim + 4 corner chevrons, WoW-style
+    const mkMat = (color, opacity) => {
+      const m = new THREE.MeshBasicMaterial({ color, transparent: true, opacity,
+        depthWrite: false, depthTest: false, side: THREE.DoubleSide }); // decal: draws over terrain
+      return m;
+    };
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(1, 28), mkMat(0xff4433, 0.06));
+    disc.rotation.x = -Math.PI / 2; disc.position.y = 0.16;
+    disc.renderOrder = 2;
+    const rim = new THREE.Mesh(new THREE.RingGeometry(0.92, 1.06, 32), mkMat(0xff5540, 0.95));
+    rim.rotation.x = -Math.PI / 2; rim.position.y = 0.18;
+    rim.renderOrder = 3;
+    const chevrons = new THREE.Group();
+    for (let i = 0; i < 4; i++) {
+      const c = new THREE.Mesh(new THREE.RingGeometry(1.12, 1.28, 32, 1, i * Math.PI / 2 + 0.18, Math.PI / 2 - 0.36),
+        mkMat(0xffb040, 0.9));
+      c.rotation.x = -Math.PI / 2;
+      c.renderOrder = 3;
+      chevrons.add(c);
+    }
+    chevrons.position.y = 0.14;
+    g.add(disc, rim, chevrons);
+    g.visible = false;
+    this.scene.add(g);
+    this._selRing = g;
+    this._selChevrons = chevrons;
   }
 
   // ---------------- combat outcomes ----------------
@@ -577,6 +614,19 @@ export class Game {
       this.world.tick(dt, t, this.engine.camera.position);
       if (this.inDungeon) this.dungeonMgr.tick(dt, t);
       this.net.update(dt);
+
+      // selection ring follows the target
+      if (this._selRing?.visible) {
+        const tg = this.target;
+        if (!tg || !tg.alive) this._selRing.visible = false;
+        else {
+          this._selRing.position.set(tg.pos.x, this.groundY(tg.pos) + 0.05, tg.pos.z);
+          const base = (tg.isBoss ? 1.7 : 1.0) * (tg.radius > 0.8 ? 1.3 : 1);
+          this._selRingPop = Math.max(0, (this._selRingPop || 0) - dt);
+          this._selRing.scale.setScalar(base * (1 + this._selRingPop * 1.6));
+          this._selChevrons.rotation.y = t * 1.2;
+        }
+      }
 
       // bubbles cleanup
       this.bubbles = this.bubbles.filter(b => b.until > t);

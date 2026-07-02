@@ -129,19 +129,29 @@ function buildOverlays() {
   draw();
 }
 
-// ---------------- click-to-target ----------------
+// ---------------- click-to-target: raycast real hitboxes at the cursor ----------------
 function setupClickTarget(game, input) {
   const ray = new THREE.Raycaster();
-  input.on('canvasclick', () => {
+  input.on('canvasclick', (ev) => {
     if (input.uiOpen || !game.player) return;
-    ray.setFromCamera(new THREE.Vector2(0, 0), game.engine.camera);
-    let best = null, bd = 1e9;
+    // pointer-locked: aim from the crosshair; unlocked: aim from the actual cursor
+    const nx = ev?.locked ? 0 : (ev.x / innerWidth) * 2 - 1;
+    const ny = ev?.locked ? 0 : -(ev.y / innerHeight) * 2 + 1;
+    ray.setFromCamera(new THREE.Vector2(nx, ny), game.engine.camera);
+    const boxes = [];
+    for (const m of game.mobs) if (m.alive && m.hitboxMesh && m.group.visible) boxes.push(m.hitboxMesh);
+    const hits = ray.intersectObjects(boxes, false);
+    if (hits.length) {
+      const actor = hits[0].object.userData.actorRef;
+      if (actor && game.player.distTo(actor) < 60) { game.setTarget(actor); return; }
+    }
+    // near-miss forgiveness: closest mob within a slim cone of the ray
+    let best = null, bd = 1.4;
     for (const m of game.mobs) {
       if (!m.alive) continue;
-      const p = m.pos.clone(); p.y += 1;
+      const p = m.pos.clone(); p.y += 1.1;
       const d = ray.ray.distanceToPoint(p);
-      const dist = game.player.distTo(m);
-      if (d < 1.6 && dist < 45 && dist < bd) { bd = dist; best = m; }
+      if (d < bd && game.player.distTo(m) < 50) { bd = d; best = m; }
     }
     if (best) game.setTarget(best);
   });

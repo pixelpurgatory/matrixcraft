@@ -332,6 +332,13 @@ export class UI {
   // ---------------- TALENTS ----------------
   renderTalents() {
     const p = this.game.player, b = this.body();
+    if (!p.cls.talents.length) {
+      b.innerHTML = `<div class="tt-type" style="text-align:center;padding:36px 16px;line-height:2">
+        Your power flows through your four disciplines now:<br>
+        <b style="color:var(--gold)">\u2694\ufe0f Attack \u00b7 \ud83d\udd25 Fireball \u00b7 \u2744\ufe0f Frost Nova \u00b7 \u2604\ufe0f Rain of Fire</b><br><br>
+        Master the fundamentals. Talents return when the Veil deems you ready.</div>`;
+      return;
+    }
     b.innerHTML = `
       <div class="tt-type" style="margin-bottom:10px">${p.cls.name} — one choice per row, unlocked at levels 4/8/12/16/20.
       Choices are free to swap out of combat (tap another talent).</div>

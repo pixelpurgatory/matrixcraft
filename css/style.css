@@ -90,6 +90,9 @@ button{font-family:inherit}
 .abtn.gcd::after{content:"";position:absolute;inset:0;background:#0008;animation:gcdsweep .9s linear forwards}
 @keyframes gcdsweep{from{height:100%}to{height:0}}
 
+.abtn.auto-on,.tbtn.auto-on{border-color:#ff5540!important;box-shadow:0 0 12px #ff554088!important;animation:autopulse 1s infinite}
+@keyframes autopulse{50%{box-shadow:0 0 20px #ff5540cc}}
+
 /* castbar */
 #castbar{position:absolute;bottom:calc(120px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);width:min(70vw,300px);display:none}
 #castbar .bar .fill{background:linear-gradient(#e8c86a,#9a7a20)}
@@ -109,10 +112,11 @@ button{font-family:inherit}
 
 /* combat text */
 #floaters{position:absolute;inset:0;overflow:hidden}
-.floater{position:absolute;font-weight:700;font-size:16px;text-shadow:0 1px 0 #000,0 0 6px #000;transform:translate(-50%,-50%);
+.floater{position:absolute;font-weight:700;font-size:19px;text-shadow:0 2px 0 #000,0 0 8px #000;transform:translate(-50%,-50%);
   animation:floatup 1.1s ease-out forwards;pointer-events:none}
-.floater.crit{font-size:24px}
-@keyframes floatup{from{opacity:1}80%{opacity:1}to{opacity:0;margin-top:-70px}}
+.floater.crit{font-size:32px;color:#ffdd33;animation:critpop 1.1s ease-out forwards}
+@keyframes floatup{from{opacity:1;transform:translate(-50%,-50%) scale(1.25)}12%{transform:translate(-50%,-50%) scale(1)}80%{opacity:1}to{opacity:0;margin-top:-70px}}
+@keyframes critpop{0%{opacity:1;transform:translate(-50%,-50%) scale(2)}18%{transform:translate(-50%,-50%) scale(1)}80%{opacity:1}to{opacity:0;margin-top:-84px}}
 
 /* chat/log */
 #gamelog{position:absolute;bottom:calc(70px + env(safe-area-inset-bottom));left:10px;width:min(60vw,330px);max-height:130px;overflow:hidden;
