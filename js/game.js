@@ -47,7 +47,7 @@ export class Game {
     this.bubbles = [];
     this.paused = false;
     this.won = false;
-    this.settings = { pixelScale: 2.2, sfx: 0.5, music: 0.35, quality: 'high', showGuide: true };
+    this.settings = { pixelScale: (matchMedia('(pointer:coarse)').matches ? 3.4 : 2.2), sfx: 0.5, music: 0.35, quality: 'high', showGuide: true };
     this._loadSettings();
   }
 
@@ -601,10 +601,20 @@ export class Game {
           ? (x, z, r) => { const rr = Math.hypot(x, z); if (rr > 23) { x *= 23 / rr; z *= 23 / rr; } return [x, z]; }
           : World.prototype.collide.bind(this.world);
 
-      // entities
+      // entities (distant idle mobs tick at quarter rate — big CPU saving)
+      this._frame = (this._frame || 0) + 1;
       if (!this.paused) {
-        for (const m of this.mobs) if (m.group.visible || m.alive) m.update(dt);
-        if (!this.inDungeon && !this.inArena) for (const n of this.npcs) n.update(dt);
+        const px = this.player.pos.x, pz = this.player.pos.z;
+        for (const m of this.mobs) {
+          if (!m.group.visible && !m.alive) continue;
+          if (m.state !== 'chase' && !m.isBoss && (this._frame & 3) !== 0) {
+            const dx = m.pos.x - px, dz = m.pos.z - pz;
+            if (dx * dx + dz * dz > 6400) continue; // >80m and idle: skip 3 of 4 frames
+          }
+          m.update(dt);
+        }
+        if (!this.inDungeon && !this.inArena)
+          for (const n of this.npcs) if ((this._frame & 1) === 0 || this.player.distTo(n) < 40) n.update(dt);
         this.quests?.tick(dt);
         this.encounters?.update(dt);
         this.arena.update(dt);

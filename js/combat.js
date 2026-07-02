@@ -248,8 +248,11 @@ export class VFX {
     this.floatersEl = null;
   }
 
+  get overBudget() { return this.live.length > 60; }  // effects budget under heavy fights
+
   // layered impact: glow flash + shockwave ring + sparks. power ~ 1 normal, 2 heavy, 3 huge
   impact(pos, color = 0xffcc66, power = 1) {
+    if (this.overBudget && power < 2) { this.burst(pos, color, 4, 0.16, 4, 0.3); return; }
     const p = pos.clone(); p.y += 1.1;
     // core flash sprite
     const spr = new THREE.Sprite(new THREE.SpriteMaterial({
@@ -295,6 +298,7 @@ export class VFX {
   }
 
   burst(pos, color = 0xffaa33, count = 10, size = 0.16, speed = 5, life = 0.5) {
+    if (this.live.length > 90) return;
     const geo = new THREE.BufferGeometry();
     const arr = new Float32Array(count * 3), vel = [];
     for (let i = 0; i < count; i++) {
@@ -333,16 +337,18 @@ export class VFX {
 
   // ground telegraph (danger circle that fills)
   telegraph(pos, radius, dur, color = 0xff3322) {
-    const m1 = new THREE.Mesh(new THREE.CircleGeometry(radius, 24),
+    VFX._unitCircle ??= new THREE.CircleGeometry(1, 24);
+    const m1 = new THREE.Mesh(VFX._unitCircle,
       new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.16, side: THREE.DoubleSide, depthWrite: false }));
     m1.rotation.x = -Math.PI / 2; m1.position.set(pos.x, (pos.y || 0) + 0.12, pos.z);
-    const m2 = new THREE.Mesh(new THREE.CircleGeometry(radius, 24),
+    m1.scale.setScalar(radius);
+    const m2 = new THREE.Mesh(VFX._unitCircle,
       new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.4, side: THREE.DoubleSide, depthWrite: false }));
     m2.rotation.x = -Math.PI / 2; m2.position.set(pos.x, (pos.y || 0) + 0.14, pos.z);
     m2.scale.setScalar(0.01);
     this.game.scene.add(m1, m2);
     this.live.push({ obj: m1, extra: [m2], t: 0, life: dur, tick: (fx) => {
-      m2.scale.setScalar(Math.min(1, fx.t / dur));
+      m2.scale.setScalar(Math.min(1, fx.t / dur) * radius);
     } });
   }
 

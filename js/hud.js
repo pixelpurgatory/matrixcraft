@@ -352,58 +352,79 @@ export class HUD {
       } else { gl.innerHTML = ''; ga.style.display = 'none'; }
     }
 
-    // ---- speech bubbles (rendered as positioned floaters) ----
-    // (bubbles list lives in game; render as DOM labels)
+    // ---- speech bubbles: pooled divs ----
     let bubbleWrap = document.getElementById('bubbles');
     if (!bubbleWrap) {
       bubbleWrap = document.createElement('div');
       bubbleWrap.id = 'bubbles';
       bubbleWrap.style.cssText = 'position:absolute;inset:0;pointer-events:none;overflow:hidden';
       this.root.appendChild(bubbleWrap);
+      this._bubblePool = [];
+      for (let i = 0; i < 5; i++) {
+        const d = document.createElement('div');
+        d.style.cssText = `position:absolute;transform:translate(-50%,-100%);max-width:220px;background:#0b0f0de8;
+          border:1px solid var(--line);border-radius:6px;padding:5px 9px;font-size:11px;color:#e8e4d4;text-align:center;display:none;will-change:left,top`;
+        bubbleWrap.appendChild(d);
+        this._bubblePool.push(d);
+      }
     }
-    bubbleWrap.innerHTML = '';
+    let bi = 0;
     for (const b of g.bubbles) {
+      if (bi >= 5) break;
       const v = b.pos.clone(); v.y += 2.6;
       v.project(g.engine.camera);
       if (v.z > 1) continue;
-      const d = document.createElement('div');
-      d.style.cssText = `position:absolute;transform:translate(-50%,-100%);max-width:220px;background:#0b0f0de8;
-        border:1px solid var(--line);border-radius:6px;padding:5px 9px;font-size:11px;color:#e8e4d4;text-align:center;
-        left:${(v.x * 0.5 + 0.5) * 100}%;top:${(-v.y * 0.5 + 0.5) * 100}%`;
-      d.textContent = b.text;
-      bubbleWrap.appendChild(d);
+      const d = this._bubblePool[bi++];
+      d.style.display = 'block';
+      if (d.textContent !== b.text) d.textContent = b.text;
+      d.style.left = ((v.x * 0.5 + 0.5) * 100).toFixed(2) + '%';
+      d.style.top = ((-v.y * 0.5 + 0.5) * 100).toFixed(2) + '%';
     }
+    for (let i = bi; i < 5; i++) this._bubblePool[i].style.display = 'none';
 
     // ---- crosshair when the mouse is locked ----
     const ch = document.getElementById('crosshair');
     if (ch) ch.style.display = this.input.locked ? 'block' : 'none';
 
-    // ---- enemy nameplates (target + anyone fighting you + nearby bosses) ----
+    // ---- enemy nameplates: POOLED divs, cheap per-frame updates (no innerHTML churn) ----
     const np = document.getElementById('nameplates');
     if (np) {
-      let html = '';
+      if (!this._plates) {
+        this._plates = [];
+        for (let i = 0; i < 8; i++) {
+          const el = document.createElement('div');
+          el.style.cssText = 'position:absolute;transform:translate(-50%,-100%);text-align:center;min-width:76px;display:none;will-change:left,top';
+          el.innerHTML = `<div class="np-name" style="font-size:10px;text-shadow:0 1px 3px #000;white-space:nowrap"></div>
+            <div class="np-bar" style="height:4px;background:#111;border:1px solid #000;border-radius:2px;overflow:hidden;margin-top:1px">
+              <div class="np-fill" style="height:100%;background:linear-gradient(#e0574e,#8f231d);transform-origin:left"></div></div>`;
+          np.appendChild(el);
+          this._plates.push(el);
+        }
+      }
       let count = 0;
       for (const m of g.mobs) {
-        if (!m.alive || count >= 8) continue;
+        if (count >= 8) break;
+        if (!m.alive) continue;
         const isTarget = m === g.target;
-        const fighting = m.state === 'chase';
-        if (!isTarget && !fighting && !m.isBoss) continue;
+        if (!isTarget && m.state !== 'chase' && !m.isBoss) continue;
         const d = p.distTo(m);
         if (d > (m.isBoss ? 60 : 34)) continue;
         const v = m.pos.clone(); v.y += (m.isBoss ? 3.6 : 2.5);
         v.project(g.engine.camera);
         if (v.z > 1 || Math.abs(v.x) > 1.05 || Math.abs(v.y) > 1.05) continue;
-        const sx = (v.x * 0.5 + 0.5) * 100, sy = (-v.y * 0.5 + 0.5) * 100;
-        const hpp = Math.max(0, m.hp / m.maxHp);
-        html += `<div style="position:absolute;left:${sx}%;top:${sy}%;transform:translate(-50%,-100%);text-align:center;min-width:76px">
-          <div style="font-size:${isTarget ? 12 : 10}px;color:${m.isBoss ? '#ffb3a7' : isTarget ? '#ffd97e' : '#ffb0a0'};
-            text-shadow:0 1px 3px #000;white-space:nowrap;font-weight:${isTarget ? 700 : 400}">${m.name} <span style="opacity:.7">${m.isBoss ? '☠' : m.level}</span></div>
-          <div style="height:${isTarget ? 6 : 4}px;background:#111;border:1px solid ${isTarget ? '#ffb040' : '#000'};border-radius:2px;overflow:hidden;margin-top:1px">
-            <div style="height:100%;width:${(hpp * 100).toFixed(0)}%;background:linear-gradient(#e0574e,#8f231d)"></div></div>
-        </div>`;
-        count++;
+        const el = this._plates[count++];
+        el.style.display = 'block';
+        el.style.left = ((v.x * 0.5 + 0.5) * 100).toFixed(2) + '%';
+        el.style.top = ((-v.y * 0.5 + 0.5) * 100).toFixed(2) + '%';
+        const name = el.firstElementChild;
+        const txt = m.name + ' ' + (m.isBoss ? '\u2620' : m.level);
+        if (name.textContent !== txt) name.textContent = txt;
+        name.style.color = m.isBoss ? '#ffb3a7' : isTarget ? '#ffd97e' : '#ffb0a0';
+        name.style.fontWeight = isTarget ? '700' : '400';
+        name.style.fontSize = isTarget ? '12px' : '10px';
+        el.querySelector('.np-fill').style.transform = `scaleX(${Math.max(0, m.hp / m.maxHp).toFixed(3)})`;
       }
-      np.innerHTML = html;
+      for (let i = count; i < 8; i++) this._plates[i].style.display = 'none';
     }
 
     // ---- minimap (2 Hz) ----

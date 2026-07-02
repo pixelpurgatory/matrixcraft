@@ -54,31 +54,32 @@ export class Input {
 
   _initMouse() {
     if (IS_TOUCH) return;
+    // WoW-style mouse: NO pointer lock. Hold either button and drag to look;
+    // a plain left-click (no drag) targets whatever is under the cursor.
     const canvas = document.getElementById('game');
     this.mouseX = innerWidth / 2; this.mouseY = innerHeight / 2;
-    canvas.addEventListener('click', (e) => {
-      this.fire('canvasclick', { x: e.clientX, y: e.clientY, locked: this.locked });
-      if (!this.uiOpen && !this.locked) canvas.requestPointerLock?.();
-    });
-    document.addEventListener('pointerlockchange', () => {
-      this.locked = document.pointerLockElement === canvas;
-    });
-    addEventListener('mousemove', (e) => {
-      if (this.locked) { this.lookDX += e.movementX; this.lookDY += e.movementY; }
-      else { this.mouseX = e.clientX; this.mouseY = e.clientY; }
-    });
-    // right-drag camera when not locked (menus open etc.)
-    let rd = false, lx = 0, ly = 0;
+    let dragging = false, lx = 0, ly = 0, dragDist = 0;
     canvas.addEventListener('contextmenu', e => e.preventDefault());
-    canvas.addEventListener('mousedown', (e) => { if (e.button === 2) { rd = true; lx = e.clientX; ly = e.clientY; } });
-    addEventListener('mouseup', (e) => { if (e.button === 2) rd = false; });
+    canvas.addEventListener('mousedown', (e) => {
+      if (e.button === 0 || e.button === 2) { dragging = true; lx = e.clientX; ly = e.clientY; dragDist = 0; }
+    });
+    addEventListener('mouseup', (e) => { if (e.button === 0 || e.button === 2) dragging = false; });
     addEventListener('mousemove', (e) => {
-      if (rd && !this.locked) { this.lookDX += e.clientX - lx; this.lookDY += e.clientY - ly; lx = e.clientX; ly = e.clientY; }
+      this.mouseX = e.clientX; this.mouseY = e.clientY;
+      if (dragging) {
+        const dx = e.clientX - lx, dy = e.clientY - ly;
+        dragDist += Math.abs(dx) + Math.abs(dy);
+        this.lookDX += dx; this.lookDY += dy;
+        lx = e.clientX; ly = e.clientY;
+      }
+    });
+    canvas.addEventListener('click', (e) => {
+      this.fire('canvasclick', { x: e.clientX, y: e.clientY, drag: dragDist > 6 });
     });
     addEventListener('wheel', (e) => this.fire('zoom', Math.sign(e.deltaY)), { passive: true });
   }
 
-  releasePointer() { if (this.locked) document.exitPointerLock?.(); }
+  releasePointer() { }
 
   _initTouch() {
     const zone = document.getElementById('joy-zone');
@@ -130,7 +131,7 @@ export class Input {
     canvas.addEventListener('touchmove', (e) => {
       for (const t of e.changedTouches) {
         if (t.identifier !== lookId) continue;
-        this.lookDX += (t.clientX - llx) * 2.2; this.lookDY += (t.clientY - lly) * 2.2;
+        this.lookDX += (t.clientX - llx) * 1.3; this.lookDY += (t.clientY - lly) * 1.3;
         llx = t.clientX; lly = t.clientY;
       }
     }, { passive: true });

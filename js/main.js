@@ -133,10 +133,9 @@ function buildOverlays() {
 function setupClickTarget(game, input) {
   const ray = new THREE.Raycaster();
   input.on('canvasclick', (ev) => {
-    if (input.uiOpen || !game.player) return;
-    // pointer-locked: aim from the crosshair; unlocked: aim from the actual cursor
-    const nx = ev?.locked ? 0 : (ev.x / innerWidth) * 2 - 1;
-    const ny = ev?.locked ? 0 : -(ev.y / innerHeight) * 2 + 1;
+    if (input.uiOpen || !game.player || ev?.drag) return; // drags rotate the camera, not target
+    const nx = (ev.x / innerWidth) * 2 - 1;
+    const ny = -(ev.y / innerHeight) * 2 + 1;
     ray.setFromCamera(new THREE.Vector2(nx, ny), game.engine.camera);
     const boxes = [];
     for (const m of game.mobs) if (m.alive && m.hitboxMesh && m.group.visible) boxes.push(m.hitboxMesh);
@@ -183,7 +182,7 @@ showTitle(game, (mode, classId, name) => {
     // guidance nudges at the very start
     if (mode === 'new') {
       game.schedule(2, () => game.log('◆ Follow the golden arrow — Elder Maren in the village has your first task.'));
-      game.schedule(6, () => game.log(IS_TOUCH ? 'Left thumb moves you. Right side of the screen turns the camera.' : 'Click the world to lock the mouse. WASD to move, 1–0 for skills, E to interact.'));
+      game.schedule(6, () => game.log(IS_TOUCH ? 'Left thumb moves you. Right side of the screen turns the camera.' : 'WASD moves. Hold a mouse button and drag to look. Left-click an enemy to target it. Keys 1-4 cast.'));
     }
     // autosave
     setInterval(() => game.save(), 10000);
@@ -210,14 +209,13 @@ function loop(now) {
   game.cam.update(dt, look, game.player.pos, (p) => game.groundY(p));
   game.hud?.update(dt);
 
-  // auto quality: if we can't hold ~50fps for a while, chunk up the pixels once
+  // auto quality ladder: step down render scale quickly until we hold ~50fps
   fpsAccum += dt; fpsN++;
-  if (fpsAccum > 5) {
+  if (fpsAccum > 2.5) {
     const fps = fpsN / fpsAccum;
     fpsAccum = 0; fpsN = 0;
-    if (!autoTuned && fps < 48 && game.settings.pixelScale < 4.6) {
-      autoTuned = true;
-      game.settings.pixelScale = 4.6;
+    if (fps < 48 && game.settings.pixelScale < 4.6) {
+      game.settings.pixelScale = game.settings.pixelScale < 3.4 ? 3.4 : 4.6;
       game.saveSettings();
       game.log('Auto-tuned render scale for smoother FPS (change it in Settings).');
     }

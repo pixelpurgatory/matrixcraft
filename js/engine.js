@@ -201,6 +201,8 @@ export class Engine {
     this.pixelScale = s;
     // finer render = softer palette quantization so texture detail survives
     this.blitMat.uniforms.uQuant.value = s <= 2.2 ? 0.18 : s <= 3.6 ? 0.55 : 0.8;
+    // chunky mode also drops the bloom taps — big win on weak GPUs
+    this.blitMat.uniforms.uBloom.value = s >= 4.4 ? 0 : (this._gradeBloom ?? 0.55);
     this.resize();
   }
 
@@ -215,11 +217,12 @@ export class Engine {
     this.blitMat?.uniforms.uTexel.value.set(1 / rw, 1 / rh);
   }
 
-  // per-zone color grade
+  // per-zone color grade (bloom is suppressed in chunky perf mode)
   setGrade(tint, sat, bloom) {
     this.blitMat.uniforms.uTint.value.set(tint);
     this.blitMat.uniforms.uSat.value = sat;
-    this.blitMat.uniforms.uBloom.value = bloom;
+    this._gradeBloom = bloom;
+    this.blitMat.uniforms.uBloom.value = this.pixelScale >= 4.4 ? 0 : bloom;
   }
 
   // env = { skyTop, skyMid, skyBot, sunColor, sunDir, cloud, night, fogColor, fogNear, fogFar, sunIntensity, hemiSky, hemiGround, hemiIntensity }
