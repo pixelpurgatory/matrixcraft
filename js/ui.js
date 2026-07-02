@@ -196,7 +196,7 @@ export class UI {
           ${g.unlockedZones.includes(z.id) ? '' : 'disabled'}>
           ${z.name} ${g.unlockedZones.includes(z.id) ? `(${z.levels[0]}–${z.levels[1]})` : '🔒'}</button>`).join('')}
       </div>
-      <div id="mapwrap"><canvas id="mapcanvas" width="512" height="512"></canvas></div>
+      <div id="mapwrap"><canvas id="mapcanvas" width="704" height="704"></canvas></div>
       <div class="map-legend">
         <span style="color:#fff">● you</span><span style="color:#ffd100">● quest</span>
         <span style="color:#39ff88">● dungeon seam</span><span style="color:#7fd0ff">● npc</span>
@@ -231,6 +231,19 @@ export class UI {
       }
     }
     ctx.putImageData(img, 0, 0);
+    // roads
+    ctx.strokeStyle = 'rgba(222,186,116,0.85)'; ctx.lineWidth = 3; ctx.beginPath();
+    let rFirst = true;
+    for (const rp of g.world.roadPts || []) {
+      const [mx, my] = toMap(rp.x, rp.z);
+      if (rFirst) { ctx.moveTo(mx, my); rFirst = false; } else ctx.lineTo(mx, my);
+    }
+    ctx.stroke();
+    // water
+    if (g.world.landmarks.pond) {
+      const [px2, py2] = toMap(g.world.landmarks.pond.x, g.world.landmarks.pond.z);
+      ctx.fillStyle = '#3a6a8a'; ctx.beginPath(); ctx.arc(px2, py2, 26 / half * S / 2 * 0.94, 0, 7); ctx.fill();
+    }
     // landmarks
     ctx.font = '11px Verdana'; ctx.textAlign = 'center';
     for (const [k, lm] of Object.entries(g.world.landmarks)) {
@@ -238,12 +251,16 @@ export class UI {
       if (k.startsWith('dg_')) {
         const D = DUNGEONS.find(d => d.id === k.slice(3));
         ctx.fillStyle = '#39ff88';
-        ctx.fillRect(mx - 3, my - 3, 6, 6);
-        ctx.fillText((D?.type === 'raid' ? '☠ ' : '') + (D?.name || ''), mx, my - 7);
-      } else if (['village', 'camp', 'castle'].includes(k)) {
+        ctx.beginPath(); ctx.arc(mx, my, 5, 0, 7); ctx.fill();
+        ctx.strokeStyle = '#0a3a20'; ctx.stroke();
+        ctx.fillText((D?.type === 'raid' ? '☠ ' : '⚔ ') + (D?.name || ''), mx, my - 9);
+      } else if (['village', 'camp', 'castle', 'well', 'windmill', 'graveyard', 'cathedral_gate'].includes(k)) {
+        const icons = { village: '🏘️ Village', camp: '⛺ Camp', castle: '🏰', well: '⛲', windmill: '🌀 Mill', graveyard: '🪦', cathedral_gate: '⛪' };
         ctx.fillStyle = '#e8c86a';
         ctx.fillRect(mx - 3, my - 3, 6, 6);
-        ctx.fillText(k === 'village' ? 'Hub' : k === 'castle' ? '' : 'Camp', mx, my - 7);
+        ctx.font = '12px Verdana';
+        ctx.fillText(icons[k] || '', mx, my - 8);
+        ctx.font = '11px Verdana';
       }
     }
     // guidance

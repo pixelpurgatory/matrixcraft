@@ -236,7 +236,8 @@ export class Mob extends Actor {
         } else if (t >= this.nextAttack && (inRange || (this.ranged && d < this.attackRange))) {
           const kind = this.ranged && d > 3 ? 'ranged' : 'melee';
           this.windup = { at: t + (kind === 'melee' ? 0.55 : 1.1), kind };
-          this.anim.play(kind === 'melee' ? 'attack' : 'cast');
+          if (kind === 'melee') this.anim.play('chop', 1.0);   // strike frame lands ≈ windup
+          else this.anim.play('cast', 1.2);
         }
         break;
       }

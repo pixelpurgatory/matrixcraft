@@ -171,7 +171,7 @@ export class Net {
         p: [+p.pos.x.toFixed(2), +p.pos.y.toFixed(2), +p.pos.z.toFixed(2)],
         f: +p.facing.toFixed(2),
         m: p.anim.state === 'walk' || undefined,
-        anim: ['attack', 'cast', 'spin', 'death'].includes(p.anim.state) ? p.anim.state : undefined,
+        anim: ['chop', 'slash', 'shoot', 'cast', 'castRelease', 'spin', 'death'].includes(p.anim.state) ? p.anim.state : undefined,
         hp: Math.round(p.hp), mh: p.maxHp, lvl: p.level,
       } });
     }

@@ -74,6 +74,14 @@ export function buildHumanoid(opts = {}) {
     qGlow.visible = false;
     weapon.add(qGlow);
     weapon.userData.qGlow = qGlow;
+    // trail rail markers: ribbon sweeps between tip and base during strikes
+    const tip = new THREE.Object3D(), base = new THREE.Object3D();
+    if (opts.weapon === 'staff') { tip.position.y = 1.25; base.position.y = 0.3; }
+    else if (opts.weapon === 'axe') { tip.position.set(0.32, 0.85, 0); base.position.set(0, 0.15, 0); }
+    else if (opts.weapon === 'rifle') { tip.position.z = 1.0; base.position.z = 0.2; }
+    else { tip.position.y = 0.98; base.position.y = 0.1; }
+    weapon.add(tip, base);
+    weapon.userData.tip = tip; weapon.userData.base = base;
   }
 
   // simple face (two dark pixels)
@@ -248,9 +256,19 @@ export function blobShadow(radius = 0.6) {
   return s;
 }
 
+// ---------- easing ----------
+const easeOut = (p) => 1 - Math.pow(1 - p, 3);
+const easeIn = (p) => p * p * p;
+const easeOutBack = (p) => { const c = 1.9; return 1 + (c + 1) * Math.pow(p - 1, 3) + c * Math.pow(p - 1, 2); };
+const clamp01 = (p) => Math.max(0, Math.min(1, p));
+// phase helper: progress within [a,b] of p
+const ph = (p, a, b) => clamp01((p - a) / (b - a));
+
 // ---------------------------------------------------------------
 // ANIMATOR — drives a rig from entity state each frame
-// states: idle | walk | attack | cast | hit | death | howl | spin
+// Authored multi-phase actions (anticipation → strike → follow-through):
+// idle | walk | chop | slash | shoot | cast | castRelease | hit | death | howl | spin
+// 'attack' is kept as an alias of 'chop' for the generic mobs.
 // ---------------------------------------------------------------
 export class Animator {
   constructor(group) {
@@ -259,15 +277,30 @@ export class Animator {
     this.t = 0;
     this.state = 'idle';
     this.stateT = 0;
+    this.stateDur = 0.5;
     this.moveSpeed = 0;
     this.baseY = 0;
     this.dead = false;
+    this.style = null;         // 'mage' | 'barbarian' | 'hunter' — class idle/handling
+    this.onStrike = null;      // callback fired at the strike frame (trails/impacts hook here)
+    this._struck = false;
     this._baseTorsoRotX = this.rig?.torso?.rotation.x ?? 0;
   }
 
-  play(state) {
+  play(state, dur) {
     if (this.dead && state !== 'death') return;
-    if (this.state !== state) { this.state = state; this.stateT = 0; }
+    if (state === 'attack') state = 'chop';
+    this.state = state;
+    this.stateT = 0;
+    this._struck = false;
+    this.stateDur = dur ?? { chop: 0.55, slash: 0.5, shoot: 0.32, castRelease: 0.34, hit: 0.3, howl: 1.2, spin: 1.0 }[state] ?? 0.5;
+  }
+
+  get striking() { // window where a melee swing is "live" (drives weapon trails)
+    if (this.state === 'chop') return this.stateT / this.stateDur > 0.3 && this.stateT / this.stateDur < 0.75;
+    if (this.state === 'slash') return this.stateT / this.stateDur > 0.28 && this.stateT / this.stateDur < 0.8;
+    if (this.state === 'spin') return true;
+    return false;
   }
 
   update(dt, moving) {
@@ -276,54 +309,146 @@ export class Animator {
     const t = this.t;
 
     if (this.state === 'death') { this._death(dt); return; }
-    // transient states end back in idle/walk
-    if (['attack', 'cast', 'hit', 'howl'].includes(this.state) && this.stateT > (this.state === 'howl' ? 1.2 : 0.45)) {
-      this.state = 'idle';
+    if (['chop', 'slash', 'shoot', 'castRelease', 'hit', 'howl'].includes(this.state) && this.stateT > this.stateDur) {
+      this.state = 'idle'; this.stateT = 0;
     }
-    if (this.state === 'spin' && this.stateT > 1.0) this.state = 'idle';
+    if (this.state === 'spin' && this.stateT > this.stateDur) { this.state = 'idle'; this.stateT = 0; }
 
     const walking = moving && this.state !== 'spin';
     const wt = t * 9;
 
     if (r.type === 'humanoid') {
-      const swing = walking ? Math.sin(wt) * 0.7 : 0;
+      const swing = walking ? Math.sin(wt) * 0.75 : 0;
       if (r.legL) r.legL.rotation.x = swing;
       if (r.legR) r.legR.rotation.x = -swing;
-      // arms: default counter-swing, unless acting
-      if (this.state === 'attack') {
-        const p = this.stateT / 0.45;
-        r.armR.rotation.x = -2.4 + p * 2.8; // overhead chop
-        r.armL.rotation.x = swing * 0.4;
-      } else if (this.state === 'cast') {
-        r.armR.rotation.x = -1.9 + Math.sin(t * 12) * 0.08;
-        r.armL.rotation.x = -1.9 - Math.sin(t * 12) * 0.08;
-      } else if (this.state === 'hit') {
-        r.torso.rotation.x = this._baseTorsoRotX - 0.25;
-        r.armL.rotation.x = -0.4; r.armR.rotation.x = -0.4;
-      } else if (this.state === 'howl') {
-        r.head.rotation.x = -0.7;
-        r.armL.rotation.x = -0.9; r.armR.rotation.x = -0.9;
-      } else if (this.state === 'spin') {
-        this.g.rotation.y += dt * 14;
-        r.armL.rotation.x = -1.5; r.armR.rotation.x = -1.5;
-        r.armL.rotation.z = -1.2; r.armR.rotation.z = 1.2;
-      } else {
-        const zomb = this.g.userData.zombie;
-        r.armL.rotation.x = zomb ? -1.2 + Math.sin(t * 2) * 0.1 : -swing * 0.8;
-        r.armR.rotation.x = zomb ? -1.2 - Math.sin(t * 2) * 0.1 : swing * 0.8;
-        r.armL.rotation.z = 0; r.armR.rotation.z = 0;
-        if (this.state === 'idle') {
-          r.torso.rotation.x = this._baseTorsoRotX;
-          r.head.rotation.x = Math.sin(t * 0.7) * 0.06;
-          r.torso.position.y = 1.05 + Math.sin(t * 2.2) * 0.015;
+      if (r.weapon) r.weapon.rotation.x = 0; // poses below counter-rotate as needed
+      // reset per-frame pose accumulators
+      let torsoX = this._baseTorsoRotX, torsoY = 0, headX = Math.sin(t * 0.7) * 0.06;
+      const p = clamp01(this.stateT / this.stateDur);
+
+      switch (this.state) {
+        case 'chop': {
+          // anticipation: raise high behind the head; strike: violent downswing; recover
+          const wind = easeOut(ph(p, 0, 0.3));
+          const strike = easeIn(ph(p, 0.3, 0.55));
+          const rec = easeOut(ph(p, 0.55, 1));
+          r.armR.rotation.x = -0.4 + wind * -2.7 + strike * 3.9 - rec * (0.8);
+          r.armR.rotation.z = wind * 0.35 - strike * 0.3;
+          r.armL.rotation.x = wind * -0.8 + strike * 0.4;
+          torsoX += wind * -0.18 + strike * 0.34 - rec * 0.16;
+          torsoY = wind * 0.25 - strike * 0.4 + rec * 0.15;
+          headX += strike * 0.25;
+          this.g.position.y = this.baseY - strike * 0.12 + 0;
+          if (!this._struck && p > 0.5) { this._struck = true; this.onStrike?.('chop'); }
+          break;
+        }
+        case 'slash': {
+          // horizontal cleave: arm sweeps across the body, torso counter-rotates
+          const wind = easeOut(ph(p, 0, 0.28));
+          const strike = easeIn(ph(p, 0.28, 0.55));
+          const rec = easeOut(ph(p, 0.55, 1));
+          r.armR.rotation.x = -1.35;
+          r.armR.rotation.y = wind * -1.15 + strike * 2.4 - rec * 1.25;
+          r.armR.rotation.z = -0.25;
+          r.armL.rotation.x = -0.35 - wind * 0.3;
+          torsoY = wind * -0.4 + strike * 0.75 - rec * 0.35;
+          torsoX += strike * 0.12;
+          if (!this._struck && p > 0.48) { this._struck = true; this.onStrike?.('slash'); }
+          break;
+        }
+        case 'shoot': {
+          // shoulder the rifle, recoil kick, settle
+          const kick = Math.max(0, 1 - p * 3.2);
+          if (r.weapon) r.weapon.rotation.x = 1.45 - kick * 0.25; // counter-rotate: barrel stays level
+          r.armR.rotation.x = -1.52 + kick * 0.3;
+          r.armR.rotation.y = -0.12;
+          r.armL.rotation.x = -1.28 + kick * 0.2;
+          r.armL.rotation.y = 0.5;
+          torsoY = 0.28 + kick * 0.12;
+          headX = -0.08;
+          if (!this._struck) { this._struck = true; this.onStrike?.('shoot'); }
+          break;
+        }
+        case 'cast': {
+          // two-hand channel: staff raised, energy gathering
+          const gather = Math.min(1, this.stateT * 3);
+          r.armR.rotation.x = -1.6 - gather * 0.5 + Math.sin(t * 11) * 0.05;
+          r.armR.rotation.z = -0.2;
+          r.armL.rotation.x = -1.7 + Math.sin(t * 11 + 1.5) * 0.07;
+          r.armL.rotation.z = 0.35;
+          torsoX += -0.06;
+          if (r.weapon?.userData.glow) r.weapon.userData.glow.intensity = 0.6 + Math.sin(t * 14) * 0.4;
+          break;
+        }
+        case 'castRelease': {
+          // thrust the staff forward, release the bolt
+          const thrust = easeOutBack(ph(p, 0, 0.5));
+          const rec = easeOut(ph(p, 0.5, 1));
+          r.armR.rotation.x = -2.1 + thrust * 0.9 - rec * 0.2;
+          r.armL.rotation.x = -0.9 - thrust * 0.5;
+          torsoX += thrust * 0.14;
+          torsoY = -0.15 + thrust * 0.2;
+          if (!this._struck && p > 0.28) { this._struck = true; this.onStrike?.('castRelease'); }
+          break;
+        }
+        case 'hit': {
+          const rec = 1 - p;
+          torsoX += -0.3 * rec;
+          headX += -0.2 * rec;
+          r.armL.rotation.x = -0.45 * rec; r.armR.rotation.x = -0.45 * rec;
+          break;
+        }
+        case 'howl': {
+          r.head.rotation.x = -0.7;
+          r.armL.rotation.x = -0.9; r.armR.rotation.x = -0.9;
+          break;
+        }
+        case 'spin': {
+          this.g.rotation.y += dt * 15;
+          r.armL.rotation.x = -1.5; r.armR.rotation.x = -1.5;
+          r.armL.rotation.z = -1.25; r.armR.rotation.z = 1.25;
+          break;
+        }
+        default: {
+          // idle / walk with class-flavored weapon handling
+          const zomb = this.g.userData.zombie;
+          r.armR.rotation.y = 0; r.armR.rotation.z = 0; r.armL.rotation.z = 0; r.armL.rotation.y = 0;
+          if (zomb) {
+            r.armL.rotation.x = -1.2 + Math.sin(t * 2) * 0.1;
+            r.armR.rotation.x = -1.2 - Math.sin(t * 2) * 0.1;
+          } else if (this.style === 'barbarian') {
+            r.armR.rotation.x = -0.62 + Math.sin(t * 2.2) * 0.03;      // axe rested on shoulder
+            r.armR.rotation.z = -0.3;
+            r.armL.rotation.x = -swing * 0.85;
+          } else if (this.style === 'hunter') {
+            r.armR.rotation.x = -0.95 + swing * 0.15;                   // rifle held low-ready
+            r.armR.rotation.y = -0.15;
+            if (r.weapon) r.weapon.rotation.x = 0.8;                    // barrel level-ish
+            r.armL.rotation.x = -0.5 - swing * 0.2;
+          } else if (this.style === 'mage') {
+            r.armR.rotation.x = -0.32 + Math.sin(t * 2.2) * 0.03;      // staff planted
+            r.armL.rotation.x = -swing * 0.85;
+          } else {
+            r.armL.rotation.x = -swing * 0.85;
+            r.armR.rotation.x = swing * 0.85;
+          }
+          if (!walking) {
+            torsoX = this._baseTorsoRotX;
+            r.torso.position.y = 1.05 + Math.sin(t * 2.2) * 0.015;
+          } else torsoX += 0.1; // running lean
         }
       }
+
+      r.torso.rotation.x = torsoX;
+      r.torso.rotation.y = torsoY;
+      r.head.rotation.x = headX;
       if (walking) this.g.position.y = this.baseY + Math.abs(Math.sin(wt)) * 0.06;
-      else if (!this.g.userData.floats) this.g.position.y = this.baseY;
-      // cloak sway: billows when running, drifts when idle
+      else if (!this.g.userData.floats && this.state !== 'chop') this.g.position.y = this.baseY;
+      // cloak sway: billows when running, whips on strikes
       if (r.cloak) {
-        const want = walking ? 0.34 + Math.abs(Math.sin(wt)) * 0.16 : 0.06 + Math.sin(t * 1.6) * 0.04;
-        r.cloak.rotation.x += (want - r.cloak.rotation.x) * 0.15;
+        const strikeKick = (this.state === 'chop' || this.state === 'slash') ? 0.3 : 0;
+        const want = walking ? 0.34 + Math.abs(Math.sin(wt)) * 0.16 : 0.06 + Math.sin(t * 1.6) * 0.04 + strikeKick;
+        r.cloak.rotation.x += (want - r.cloak.rotation.x) * 0.18;
       }
     }
 
@@ -332,9 +457,13 @@ export class Animator {
       r.legs[0].rotation.x = swing; r.legs[3].rotation.x = swing;
       r.legs[1].rotation.x = -swing; r.legs[2].rotation.x = -swing;
       r.tail.rotation.y = Math.sin(t * 5) * 0.3;
-      if (this.state === 'attack') {
-        const p = this.stateT / 0.45;
-        r.head.rotation.x = -0.5 + p * 0.8; // lunge bite
+      if (this.state === 'chop') {
+        const p = clamp01(this.stateT / this.stateDur);
+        // pounce: rear back, then lunge the whole body forward with a bite
+        const wind = easeOut(ph(p, 0, 0.35)), strike = easeIn(ph(p, 0.35, 0.6)), rec = easeOut(ph(p, 0.6, 1));
+        r.head.rotation.x = wind * -0.6 + strike * 1.1 - rec * 0.5;
+        r.torso.rotation.x = wind * -0.25 + strike * 0.3 - rec * 0.05;
+        this.g.position.y = this.baseY + Math.sin(strike * Math.PI) * 0.25;
       } else r.head.rotation.x = walking ? 0.05 : Math.sin(t * 1.5) * 0.08;
       if (this.state === 'hit') r.torso.rotation.z = 0.2; else r.torso.rotation.z = 0;
     }

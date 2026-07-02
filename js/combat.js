@@ -296,6 +296,77 @@ export class VFX {
     this.live.push({ obj: beam, t: 0, life, tick: (fx) => { m.opacity = 0.9 * (1 - fx.t / life); } });
   }
 
+  // weapon trail: ribbon that follows the blade between tip and base while the swing is live
+  weaponTrail(actor, dur = 0.45, color = 0xffd27a) {
+    const w = actor.group.userData.rig?.weapon;
+    if (!w?.userData.tip) return;
+    const MAX = 14;
+    const samples = [];
+    const geo = new THREE.BufferGeometry();
+    const posArr = new Float32Array((MAX - 1) * 6 * 3);
+    geo.setAttribute('position', new THREE.BufferAttribute(posArr, 3));
+    const m = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.75,
+      blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+    const mesh = new THREE.Mesh(geo, m);
+    mesh.frustumCulled = false;
+    this.game.scene.add(mesh);
+    const vt = new THREE.Vector3(), vb = new THREE.Vector3();
+    this.live.push({ obj: mesh, t: 0, life: dur, tick: (fx) => {
+      if (actor.anim.striking || actor.anim.state === 'spin') {
+        w.userData.tip.getWorldPosition(vt);
+        w.userData.base.getWorldPosition(vb);
+        samples.push({ t: vt.clone(), b: vb.clone(), age: 0 });
+        if (samples.length > MAX) samples.shift();
+      }
+      for (const sm of samples) sm.age += 0.016;
+      let v = 0;
+      for (let i = 0; i < samples.length - 1; i++) {
+        const a = samples[i], b = samples[i + 1];
+        const quad = [a.t, a.b, b.t, a.b, b.b, b.t];
+        for (const q of quad) { posArr[v++] = q.x; posArr[v++] = q.y; posArr[v++] = q.z; }
+      }
+      geo.setDrawRange(0, v / 3);
+      geo.attributes.position.needsUpdate = true;
+      m.opacity = 0.75 * (1 - fx.t / fx.life);
+    } });
+  }
+
+  // muzzle flash at the rifle tip
+  muzzleFlash(actor) {
+    const w = actor.group.userData.rig?.weapon;
+    if (!w?.userData.tip) return;
+    const v = new THREE.Vector3();
+    w.userData.tip.getWorldPosition(v);
+    this.burst(v.clone().setY(v.y - 1.2), 0xffe9a0, 6, 0.14, 3, 0.15);
+    const flash = new THREE.Mesh(new THREE.SphereGeometry(0.16, 6, 5),
+      new THREE.MeshBasicMaterial({ color: 0xfff2c0, transparent: true, opacity: 1, blending: THREE.AdditiveBlending, depthWrite: false }));
+    flash.position.copy(v);
+    this.game.scene.add(flash);
+    this.live.push({ obj: flash, t: 0, life: 0.08, tick: (fx) => {
+      flash.scale.setScalar(1 + fx.t * 22);
+      flash.material.opacity = 1 - fx.t / fx.life;
+    } });
+  }
+
+  // arcane sigil under a caster for the duration of the cast
+  castCircle(actor, dur, color = 0x88ccff) {
+    const g1 = new THREE.RingGeometry(0.9, 1.15, 24);
+    const g2 = new THREE.RingGeometry(0.45, 0.55, 6);
+    const mk = (g) => new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.5,
+      blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+    const r1 = mk(g1), r2 = mk(g2);
+    r1.rotation.x = r2.rotation.x = -Math.PI / 2;
+    this.game.scene.add(r1, r2);
+    this.live.push({ obj: r1, extra: [r2], t: 0, life: dur + 0.15, tick: (fx, dt) => {
+      const y = actor.pos.y + 0.12;
+      r1.position.set(actor.pos.x, y, actor.pos.z);
+      r2.position.set(actor.pos.x, y + 0.02, actor.pos.z);
+      r1.rotation.z += dt * 2.2; r2.rotation.z -= dt * 3.4;
+      const fade = actor.alive && (fx.t < dur) ? Math.min(1, fx.t * 6) : Math.max(0, 1 - (fx.t - dur) * 8);
+      r1.material.opacity = 0.5 * fade; r2.material.opacity = 0.7 * fade;
+    } });
+  }
+
   // melee swing arc: a glowing crescent that sweeps with the blow
   swingArc(actor, color = 0xffe0aa) {
     const geo = new THREE.TorusGeometry(1.5, 0.09, 4, 14, 2.4);
@@ -461,7 +532,9 @@ export class SkillRunner {
     const castTime = (skill.cast || 0) / haste;
     if (castTime > 0.05) {
       this.casting = { skill, target, groundPos, until: t + castTime, start: t };
-      this.actor.anim.play('cast');
+      this.actor.anim.play('cast', castTime + 0.2);
+      this.game.vfx.castCircle(this.actor, castTime,
+        this.cls.id === 'hunter' ? 0xd6b53a : skill.fx?.color || 0x88ccff);
       if (this.isPlayer) Events.emit('cast', skill, castTime);
       return null;
     }
@@ -519,6 +592,18 @@ export class SkillRunner {
     const crit = this._crit(skill, target);
     if (crit) dmg *= 1.5;
     target.takeDamage(dmg, this.actor, { crit, ...opts });
+    // game feel: freeze-frame + kick on melee connects (heavier on crits)
+    if ((skill.range || 30) <= 6 && this.isPlayer) {
+      this.game.hitStop(crit ? 0.1 : 0.05);
+      this.game.shake(crit ? 0.32 : 0.14);
+      // impact flinch: shove the victim back a step
+      if (target.alive && !target.isBoss) {
+        const dx = target.pos.x - this.actor.pos.x, dz = target.pos.z - this.actor.pos.z;
+        const dd = Math.hypot(dx, dz) || 1;
+        const [nx, nz] = this.game.world.collide(target.pos.x + dx / dd * 0.45, target.pos.z + dz / dd * 0.45, target.radius);
+        target.pos.x = nx; target.pos.z = nz;
+      }
+    }
     return dmg;
   }
 
@@ -579,7 +664,9 @@ export class SkillRunner {
         if (skill.id === 'deadeye_volley' && this.hasTalent('headhunter')) cnt = 7;
         scheduleHits(cnt, skill.hitInterval || 0, () => {
           if (!target?.alive) return;
-          a.anim.play(this.cls.ranged ? 'cast' : 'attack');
+          if (this.cls.weapon === 'rifle') { a.anim.play('shoot'); vfx.muzzleFlash(a); }
+          else if (this.cls.ranged) a.anim.play('castRelease');
+          else a.anim.play('slash');
           g.projectiles.spawn({
             from: a.pos.clone().setY(a.pos.y + 1.5), target, speed: skill.id === 'pyroclasm' ? 14 : 26,
             color: skill.fx.color, kind: skill.fx.proj, size: skill.id === 'pyroclasm' ? 0.5 : 0.2, trail: skill.id !== 'rifle_shot',
@@ -599,7 +686,7 @@ export class SkillRunner {
         vfx.burst(target.pos, 0xff7733, 18, 0.24, 8);
         this._aoeAround(target.pos, skill.aoe, m => this._dealDamage(skill, m, dmg));
         if (stacks >= 3 && this.hasTalent('cataclysm')) target.applyCC('stun', 1.5);
-        a.anim.play('cast');
+        a.anim.play('castRelease');
         break;
       }
       // ---- comet call ----
@@ -614,14 +701,15 @@ export class SkillRunner {
         });
         drop(1, skill.aoe, skill.delay);
         if (this.hasTalent('twin_comet')) drop(0.5, skill.aoe * 0.7, skill.delay + 0.5);
-        a.anim.play('cast');
+        a.anim.play('castRelease');
         break;
       }
       // ---- melee swings ----
       case ['cleave', 'skullsplitter', 'rampage', 'execute'].includes(skill.id): {
-        a.anim.play('attack');
+        a.anim.play(['skullsplitter', 'execute'].includes(skill.id) ? 'chop' : 'slash');
+        vfx.weaponTrail(a, 0.55, skill.fx?.swing || 0xffd27a);
         vfx.swingArc(a, skill.fx?.swing || 0xffe0aa);
-        g.schedule(0.18, () => {
+        g.schedule(0.24, () => {
           if (skill.aoe) {
             // frontal cone-ish: all hostiles within aoe of point in front
             const front = a.pos.clone().add(new THREE.Vector3(Math.sin(a.facing), 0, Math.cos(a.facing)).multiplyScalar(1.6));
@@ -641,6 +729,7 @@ export class SkillRunner {
       // ---- whirlwind ----
       case skill.id === 'whirlwind': {
         a.anim.play('spin');
+        vfx.weaponTrail(a, 1.05, 0xffbb88);
         const spins = this.hasTalent('bladestorm') ? 4 : skill.hits;
         scheduleHits(spins, skill.hitInterval, () => {
           vfx.swingArc(a, 0xffbb88);

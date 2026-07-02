@@ -191,6 +191,8 @@ function loop(now) {
   let dt = Math.min(0.05, (now - last) / 1000);
   last = now;
   if (!game.player) { game.engine.render(now / 1000, 0.05, 0); return; }
+  // hit-stop: the world freezes for a few frames on heavy impacts
+  if (game.hitStopT > 0) { game.hitStopT -= dt; dt *= 0.06; }
 
   const look = input.poll();
   game.player.update(dt, input, game.cam.yaw);

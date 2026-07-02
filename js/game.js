@@ -363,6 +363,9 @@ export class Game {
 
   shake(amt) { this.cam.shakeAmt = Math.max(this.cam.shakeAmt, amt); }
 
+  // freeze-frame on heavy hits (real seconds, applied by the main loop)
+  hitStop(sec) { this.hitStopT = Math.max(this.hitStopT || 0, sec); }
+
   // ---------------- interaction ----------------
   nearestInteract() {
     const p = this.player;

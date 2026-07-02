@@ -94,9 +94,17 @@ export class HUD {
       b.className = 'sysbtn clickable';
       b.textContent = ico;
       b.title = tip;
-      b.addEventListener('click', fn);
+      let touched = false;
+      b.addEventListener('touchstart', (e) => { e.preventDefault(); touched = true; fn(); }, { passive: false });
+      b.addEventListener('click', () => { if (!touched) fn(); touched = false; });
       sys.appendChild(b);
     }
+    // tapping the minimap opens the full map
+    const mm = this.root.querySelector('#minimap');
+    mm.style.pointerEvents = 'auto';
+    mm.style.cursor = 'pointer';
+    mm.addEventListener('touchstart', (e) => { e.preventDefault(); this.game.ui.toggle('map'); }, { passive: false });
+    mm.addEventListener('click', () => { if (!('ontouchstart' in window)) this.game.ui.toggle('map'); });
   }
 
   _buildTouchButtons() {
@@ -114,7 +122,7 @@ export class HUD {
       document.getElementById('touch-ui').appendChild(rest);
     }
     // main button center (measured from the bottom-right corner of the cluster box)
-    const cx = 56, cy = 62;
+    const cx = 64, cy = 70;
     const place = (el, size, right, bottom) => {
       el.style.width = el.style.height = size + 'px';
       el.style.right = (right - size / 2) + 'px';
@@ -132,16 +140,16 @@ export class HUD {
       wrap.appendChild(b);
     };
     // big main attack (skill 1 on the bar)
-    mkSkill(0, 76, cx, cy);
+    mkSkill(0, 88, cx, cy);
     // inner arc: skills 2–5
     [1, 2, 3, 4].forEach((idx, k) => {
-      const [r, b] = polar(102, 2 + k * 29.5);
-      mkSkill(idx, 50, r, b);
+      const [r, b] = polar(118, 2 + k * 29.5);
+      mkSkill(idx, 60, r, b);
     });
     // outer arc: skills 6–10
     [5, 6, 7, 8, 9].forEach((idx, k) => {
-      const [r, b] = polar(164, 0 + k * 23);
-      mkSkill(idx, 44, r, b);
+      const [r, b] = polar(188, 0 + k * 23);
+      mkSkill(idx, 52, r, b);
     });
     // utilities: jump + cycle-target, tucked left of the cluster
     const mkUtil = (icon, right, bottom, fn) => {
@@ -152,8 +160,8 @@ export class HUD {
       b.addEventListener('touchstart', (e) => { e.preventDefault(); fn(); }, { passive: false });
       wrap.appendChild(b);
     };
-    mkUtil('⤴', 226, 34, () => p.jump());
-    mkUtil('🎯', 226, 84, () => p.selectTarget());
+    mkUtil('⤴', 262, 36, () => p.jump());
+    mkUtil('🎯', 262, 92, () => p.selectTarget());
   }
 
   rebuildForClass() { this._buildActionBar(); if (IS_TOUCH) this._buildTouchButtons(); }
@@ -366,10 +374,49 @@ export class HUD {
     }
   }
 
+  _zoneTerrainCanvas() {
+    const g = this.game;
+    if (this._ztcZone === g.zoneId && this._ztc) return this._ztc;
+    const S = 256, size = g.world.size;
+    const cv = document.createElement('canvas'); cv.width = cv.height = S;
+    const ctx = cv.getContext('2d');
+    const img = ctx.createImageData(S, S);
+    const biome = { eldergreen: [72, 108, 52], ashmoor: [78, 90, 80], veilspire: [128, 138, 155] }[g.zoneId] || [80, 90, 70];
+    for (let py = 0; py < S; py++) for (let px = 0; px < S; px++) {
+      const wx = (px / S - 0.5) * size, wz = (py / S - 0.5) * size;
+      const h = g.world.groundH(wx, wz);
+      const shade = Math.min(1.8, 0.62 + h / 20);
+      const i = (py * S + px) * 4;
+      img.data[i] = biome[0] * shade; img.data[i + 1] = biome[1] * shade; img.data[i + 2] = biome[2] * shade; img.data[i + 3] = 255;
+    }
+    ctx.putImageData(img, 0, 0);
+    // roads
+    ctx.strokeStyle = 'rgba(215,180,110,0.8)'; ctx.lineWidth = 2; ctx.beginPath();
+    let first = true;
+    for (const rp of g.world.roadPts || []) {
+      const mx = (rp.x / size + 0.5) * S, my = (rp.z / size + 0.5) * S;
+      if (first) { ctx.moveTo(mx, my); first = false; } else ctx.lineTo(mx, my);
+    }
+    ctx.stroke();
+    this._ztc = cv; this._ztcZone = g.zoneId;
+    return cv;
+  }
+
   _drawMinimap() {
     const g = this.game, p = g.player, ctx = this.mmCtx;
     const S = 128, range = 90;
     ctx.fillStyle = '#0a120c'; ctx.fillRect(0, 0, S, S);
+    // rotated terrain backdrop
+    const cache = this._zoneTerrainCanvas();
+    const size = g.world.size;
+    const k = (S / (range * 2)) / (256 / size); // cache px -> minimap px
+    ctx.save();
+    ctx.translate(S / 2, S / 2);
+    ctx.rotate(-(-g.cam.yaw + Math.PI));
+    ctx.scale(k, k);
+    ctx.translate(-(p.pos.x / size + 0.5) * 256, -(p.pos.z / size + 0.5) * 256);
+    ctx.drawImage(cache, 0, 0);
+    ctx.restore();
     const toMap = (x, z) => {
       // rotate by camera yaw so up = forward
       const dx = x - p.pos.x, dz = z - p.pos.z;

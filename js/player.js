@@ -30,6 +30,7 @@ export class Player extends Actor {
     this.maxResource = cls.baseRes;
     this.resource = cls.resource === 'rage' ? 0 : cls.baseRes;
     this.runner = new SkillRunner(game, this, cls, { talents: this.talents, isPlayer: true });
+    this.anim.style = classId;
     this.recalcStats();
     this.hp = save?.hp ?? this.maxHp;
     this.vy = 0;
@@ -156,7 +157,7 @@ export class Player extends Actor {
       if (Math.abs(mv.x) > 0.05 || Math.abs(mv.y) > 0.05) {
         // camera-relative movement
         const ang = Math.atan2(mv.x, mv.y);
-        const dir = camYaw + ang;
+        const dir = camYaw + Math.PI + ang; // forward = away from the camera
         const spd = this.speed * speedMult * (1 - Math.min(0.6, slowed)) * Math.min(1, Math.hypot(mv.x, mv.y));
         let nx = this.pos.x + Math.sin(dir) * spd * dt;
         let nz = this.pos.z + Math.cos(dir) * spd * dt;
