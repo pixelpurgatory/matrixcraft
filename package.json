@@ -1,0 +1,11 @@
+{
+  "name": "veilbreak",
+  "version": "1.0.0",
+  "description": "VEILBREAK — online third-person pixel RPG. Three kingdoms, dungeons, raids, 1v1 arenas, and a secret buried in the code of the world.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "npx -y http-server -p 8080 -c-1 .",
+    "server": "node server/server.js"
+  }
+}

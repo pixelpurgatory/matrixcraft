@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#050807">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='13' font-size='13'>🌲</text></svg>">
+<title>VEILBREAK — an exit is possible</title>
+<meta name="description" content="Online third-person pixel RPG. Three kingdoms, dungeons, raids, 1v1 arenas — and a secret buried in the code of the world.">
+<link rel="stylesheet" href="css/style.css">
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.js" } }
+</script>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<!-- ======== BOOT / TITLE ======== -->
+<div id="boot" class="screen">
+  <canvas id="boot-rain"></canvas>
+  <div class="boot-inner">
+    <h1 class="game-title">VEILBREAK</h1>
+    <div class="game-sub">the old world is a cage. find the seams.</div>
+    <div id="boot-status">waking the dreamers…</div>
+  </div>
+</div>
+
+<!-- ======== HUD ROOT (built by JS) ======== -->
+<div id="hud" class="hidden"></div>
+
+<!-- ======== UI ROOT (menus, built by JS) ======== -->
+<div id="ui-root"></div>
+
+<!-- ======== TOUCH CONTROLS ======== -->
+<div id="touch-ui" class="hidden">
+  <div id="joy-zone"><div id="joy-base"><div id="joy-knob"></div></div></div>
+  <div id="touch-buttons"></div>
+</div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
