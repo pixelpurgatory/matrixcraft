@@ -15,9 +15,22 @@ uniform float uTime;
 uniform float uVeil;      // 0..1 how much the matrix bleeds through
 uniform float uGlitch;    // transient glitch burst 0..1
 uniform float uQuant;     // palette quantization strength
+uniform vec2 uTexel;      // 1 / render-target size
+uniform vec3 uTint;       // per-zone color grade tint
+uniform float uSat;       // saturation
+uniform float uBloom;     // glow strength
 varying vec2 vUv;
 
 float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453); }
+
+// 4x4 bayer matrix for retro ordered dithering
+float bayer(vec2 p){
+  vec2 q = floor(mod(p, 4.0));
+  float b = mod(q.x + q.y * 4.0 * fract(q.x * 0.5 + 0.25) + q.y * 2.0, 16.0);
+  return (b / 16.0) - 0.5;
+}
+
+vec3 tap(vec2 uv){ return pow(max(texture2D(tScene, uv).rgb, vec3(0.0)), vec3(0.4545)); }
 
 void main(){
   vec2 uv = vUv;
@@ -27,13 +40,23 @@ void main(){
     float r = hash(vec2(band, floor(uTime*18.0)));
     if(r > 1.0 - uGlitch*0.6) uv.x = fract(uv.x + (r - 0.5) * 0.12);
   }
-  vec3 col = texture2D(tScene, uv).rgb;
+  // linear -> sRGB happens inside tap()
+  vec3 col = tap(uv);
 
-  // linear -> sRGB (the render target is linear; canvas expects sRGB)
-  col = pow(max(col, vec3(0.0)), vec3(0.4545));
+  // bloom-lite: pull glow from bright neighbors (5 taps, big offsets = soft halo)
+  vec3 nb = tap(uv + vec2( uTexel.x*2.0, 0.0)) + tap(uv - vec2(uTexel.x*2.0, 0.0))
+          + tap(uv + vec2(0.0,  uTexel.y*2.0)) + tap(uv - vec2(0.0, uTexel.y*2.0));
+  nb *= 0.25;
+  float nbLum = dot(nb, vec3(0.299,0.587,0.114));
+  col += nb * smoothstep(0.62, 1.0, nbLum) * uBloom;
 
-  // gentle palette quantization -> painted pixel-art feel
+  // color grade: saturation + tint
+  float lum0 = dot(col, vec3(0.299,0.587,0.114));
+  col = mix(vec3(lum0), col, uSat) * uTint;
+
+  // ordered dithering hides banding at low palette depth
   float q = mix(48.0, 20.0, uQuant);
+  col += bayer(uv / uTexel) / q * 0.9;
   col = floor(col * q + 0.5) / q;
 
   // subtle green code shimmer in dark areas, scales with veil sight
@@ -76,9 +99,13 @@ void main(){
   vec3 col = mix(uBot, uMid, smoothstep(-0.05, 0.25, h));
   col = mix(col, uTop, smoothstep(0.2, 0.85, h));
 
-  // sun
+  // sun with layered halo
   float s = max(dot(d, normalize(uSunDir)), 0.0);
-  col += uSunColor * (pow(s, 220.0) * 1.2 + pow(s, 8.0) * 0.25);
+  col += uSunColor * (pow(s, 220.0) * 1.2 + pow(s, 24.0) * 0.4 + pow(s, 6.0) * 0.18) * (1.0 - uNight);
+
+  // moon rises opposite the sun at night
+  float m = max(dot(d, -normalize(uSunDir)), 0.0);
+  col += vec3(0.75, 0.82, 1.0) * (pow(m, 500.0) * 1.4 + pow(m, 60.0) * 0.25) * uNight;
 
   // clouds on a virtual plane
   if(d.y > 0.02){
@@ -130,6 +157,9 @@ export class Engine {
       uniforms: {
         tScene: { value: this.rt.texture },
         uTime: { value: 0 }, uVeil: { value: 0 }, uGlitch: { value: 0 }, uQuant: { value: 0.6 },
+        uTexel: { value: new THREE.Vector2(1 / 320, 1 / 180) },
+        uTint: { value: new THREE.Color(1, 1, 1) },
+        uSat: { value: 1.05 }, uBloom: { value: 0.55 },
       },
     });
     this.blitScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this.blitMat));
@@ -176,6 +206,14 @@ export class Engine {
     const rw = Math.max(160, Math.round(w / this.pixelScale));
     const rh = Math.max(90, Math.round(h / this.pixelScale));
     this.rt.setSize(rw, rh);
+    this.blitMat?.uniforms.uTexel.value.set(1 / rw, 1 / rh);
+  }
+
+  // per-zone color grade
+  setGrade(tint, sat, bloom) {
+    this.blitMat.uniforms.uTint.value.set(tint);
+    this.blitMat.uniforms.uSat.value = sat;
+    this.blitMat.uniforms.uBloom.value = bloom;
   }
 
   // env = { skyTop, skyMid, skyBot, sunColor, sunDir, cloud, night, fogColor, fogNear, fogFar, sunIntensity, hemiSky, hemiGround, hemiIntensity }
