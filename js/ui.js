@@ -436,9 +436,9 @@ export class UI {
     b.innerHTML = `
       <div class="set-row"><span>Render quality (pixel size)</span>
         <select id="set-px">
-          <option value="2.4" ${s.pixelScale === 2.4 ? 'selected' : ''}>Fine (2.4×)</option>
-          <option value="3.4" ${s.pixelScale === 3.4 ? 'selected' : ''}>Classic (3.4×)</option>
-          <option value="4.6" ${s.pixelScale === 4.6 ? 'selected' : ''}>Chunky (4.6×) — fastest</option>
+          <option value="2.2" ${s.pixelScale === 2.2 ? 'selected' : ''}>HD (2.2×) — textured detail</option>
+          <option value="3.4" ${s.pixelScale === 3.4 ? 'selected' : ''}>Classic pixel (3.4×)</option>
+          <option value="4.6" ${s.pixelScale === 4.6 ? 'selected' : ''}>Chunky retro (4.6×) — fastest</option>
         </select></div>
       <div class="set-row"><span>SFX volume</span><input type="range" id="set-sfx" min="0" max="1" step="0.05" value="${s.sfx}"></div>
       <div class="set-row"><span>Music volume</span><input type="range" id="set-mus" min="0" max="1" step="0.05" value="${s.music}"></div>

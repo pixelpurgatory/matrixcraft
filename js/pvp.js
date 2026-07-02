@@ -3,7 +3,7 @@
 // and duel in the Null Chamber — a floating arena outside the simulation's map.
 // Online: real opponent via matchmaking. Offline (or no match in 6s): the
 // DUELIST DAEMON, an AI that plays a real rotation with dodges and cooldowns.
-import { THREE, mat, basicMat } from './engine.js';
+import { THREE, mat, basicMat, tex } from './engine.js';
 import { Actor, SkillRunner, Events } from './combat.js';
 import { buildPlayerModel, blobShadow } from './entities.js';
 import { CLASSES } from './data_classes.js';
@@ -175,7 +175,7 @@ export class Arena {
     if (this.built) return;
     this.built = true;
     // the Null Chamber: floating hex platform in the void with data pillars
-    const plat = new THREE.Mesh(new THREE.CylinderGeometry(24, 26, 3, 6), mat(0x1a1d28));
+    const plat = new THREE.Mesh(new THREE.CylinderGeometry(24, 26, 3, 6), mat(0x3a4258, { tex: 'paving', rep: 8 }));
     plat.position.y = -1.5;
     this.root.add(plat);
     const rim = new THREE.Mesh(new THREE.TorusGeometry(24, 0.4, 6, 6), basicMat(0x39ff88, { transparent: true, opacity: 0.7 }));

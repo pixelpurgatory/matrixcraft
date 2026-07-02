@@ -47,7 +47,7 @@ export class Game {
     this.bubbles = [];
     this.paused = false;
     this.won = false;
-    this.settings = { pixelScale: 3.4, sfx: 0.5, music: 0.35, quality: 'high', showGuide: true };
+    this.settings = { pixelScale: 2.2, sfx: 0.5, music: 0.35, quality: 'high', showGuide: true };
     this._loadSettings();
   }
 

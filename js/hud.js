@@ -17,9 +17,12 @@ export class HUD {
   _build() {
     this.root.innerHTML = `
       <div id="pframe" class="unitframe">
-        <div class="uf-name"><span id="p-name">—</span><span class="lvl" id="p-lvl">1</span></div>
+        ${IS_TOUCH ? '<div id="p-portrait"><span id="p-face">🙂</span><span class="plvl" id="p-lvl">Lv 1</span></div>' : ''}
+        <div class="pf-bars">
+        <div class="uf-name"><span id="p-name">—</span>${IS_TOUCH ? '' : '<span class="lvl" id="p-lvl">1</span>'}</div>
         <div class="bar hp"><div class="fill" id="p-hp"></div><div class="bar-txt" id="p-hp-t"></div></div>
         <div class="bar mana" id="p-res-bar"><div class="fill" id="p-res"></div><div class="bar-txt" id="p-res-t"></div></div>
+        </div>
       </div>
       <div id="tframe" class="unitframe" style="display:none">
         <div class="uf-name"><span id="t-name">—</span><span class="lvl" id="t-lvl"></span></div>
@@ -97,31 +100,60 @@ export class HUD {
   }
 
   _buildTouchButtons() {
+    // Mobile-MMO fan cluster: a big main attack in the corner with two arcs of
+    // skills curving around it (like the reference layout), utilities alongside.
     const wrap = document.getElementById('touch-buttons');
     wrap.innerHTML = '';
     const p = this.game.player;
     if (!p) return;
-    // order: big attack (skill 0), then others; jump; interact handled by prompt
-    const order = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
-    for (const i of order) {
+    document.body.classList.add('touch');
+    // persistent joystick base visual
+    if (!document.getElementById('joy-rest')) {
+      const rest = document.createElement('div');
+      rest.id = 'joy-rest';
+      document.getElementById('touch-ui').appendChild(rest);
+    }
+    // main button center (measured from the bottom-right corner of the cluster box)
+    const cx = 56, cy = 62;
+    const place = (el, size, right, bottom) => {
+      el.style.width = el.style.height = size + 'px';
+      el.style.right = (right - size / 2) + 'px';
+      el.style.bottom = (bottom - size / 2) + 'px';
+    };
+    const polar = (r, deg) => [cx + r * Math.cos(deg * Math.PI / 180), cy + r * Math.sin(deg * Math.PI / 180)];
+    const mkSkill = (i, size, right, bottom) => {
       const s = p.cls.skills[i];
       const b = document.createElement('div');
       b.className = 'tbtn' + (i === 0 ? ' big' : '');
       b.id = 'tb-' + i;
       b.innerHTML = `${s.icon}<div class="cd" style="display:none"></div>`;
+      place(b, size, right, bottom);
       b.addEventListener('touchstart', (e) => { e.preventDefault(); p.useSkill(i); }, { passive: false });
       wrap.appendChild(b);
-    }
-    const jump = document.createElement('div');
-    jump.className = 'tbtn';
-    jump.textContent = '⤴';
-    jump.addEventListener('touchstart', (e) => { e.preventDefault(); p.jump(); }, { passive: false });
-    wrap.appendChild(jump);
-    const tgt = document.createElement('div');
-    tgt.className = 'tbtn';
-    tgt.textContent = '🎯';
-    tgt.addEventListener('touchstart', (e) => { e.preventDefault(); p.selectTarget(); }, { passive: false });
-    wrap.appendChild(tgt);
+    };
+    // big main attack (skill 1 on the bar)
+    mkSkill(0, 76, cx, cy);
+    // inner arc: skills 2–5
+    [1, 2, 3, 4].forEach((idx, k) => {
+      const [r, b] = polar(102, 2 + k * 29.5);
+      mkSkill(idx, 50, r, b);
+    });
+    // outer arc: skills 6–10
+    [5, 6, 7, 8, 9].forEach((idx, k) => {
+      const [r, b] = polar(164, 0 + k * 23);
+      mkSkill(idx, 44, r, b);
+    });
+    // utilities: jump + cycle-target, tucked left of the cluster
+    const mkUtil = (icon, right, bottom, fn) => {
+      const b = document.createElement('div');
+      b.className = 'tbtn util';
+      b.textContent = icon;
+      place(b, 42, right, bottom);
+      b.addEventListener('touchstart', (e) => { e.preventDefault(); fn(); }, { passive: false });
+      wrap.appendChild(b);
+    };
+    mkUtil('⤴', 226, 34, () => p.jump());
+    mkUtil('🎯', 226, 84, () => p.selectTarget());
   }
 
   rebuildForClass() { this._buildActionBar(); if (IS_TOUCH) this._buildTouchButtons(); }
@@ -157,6 +189,8 @@ export class HUD {
     const set = (id, v) => { const el = document.getElementById(id); if (el) el.style.transform = `scaleX(${Math.max(0, Math.min(1, v))})`; };
     const txt = (id, s) => { const el = document.getElementById(id); if (el) el.textContent = s; };
     txt('p-name', p.name); txt('p-lvl', 'Lv ' + p.level);
+    const face = document.getElementById('p-face');
+    if (face) face.textContent = p.cls.icon;
     set('p-hp', p.hp / p.maxHp); txt('p-hp-t', `${Math.ceil(p.hp)} / ${p.maxHp}${p.shield > 0 ? ' (+' + Math.round(p.shield) + ')' : ''}`);
     set('p-res', (p.resource ?? 0) / (p.maxResource || 100)); txt('p-res-t', `${Math.round(p.resource ?? 0)}`);
     document.getElementById('p-res-bar').querySelector('.fill').style.background = p.cls.resourceColor;

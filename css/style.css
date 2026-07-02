@@ -286,3 +286,55 @@ button{font-family:inherit}
   #sysbuttons{top:6px;right:6px}
   .game-title{letter-spacing:.06em}
 }
+
+/* ============ TOUCH LAYOUT (mobile-MMO style: portrait, fan skills, square minimap) ============ */
+body.touch #actionbar{display:none}                    /* desktop bar replaced by the fan cluster */
+body.touch #xpbar{bottom:2px;width:min(60vw,340px)}
+body.touch #pframe{top:8px;left:8px;display:flex;gap:8px;align-items:center;width:auto;
+  background:transparent;border:none;padding:0}
+body.touch #p-portrait{width:56px;height:56px;border-radius:50%;flex:none;position:relative;
+  background:radial-gradient(#1c2620,#0a0d0b);border:2px solid var(--gold-dim);
+  box-shadow:0 0 0 2px #000,0 0 14px #0009;display:flex;align-items:center;justify-content:center;font-size:30px}
+body.touch #p-portrait .plvl{position:absolute;bottom:-4px;left:50%;transform:translateX(-50%);
+  background:linear-gradient(#3a2f14,#141008);border:1px solid var(--gold-dim);border-radius:8px;
+  padding:0 7px;font-size:10px;color:var(--gold);white-space:nowrap}
+body.touch #pframe .pf-bars{width:34vw;max-width:180px;background:#0b0f0dd8;border:1px solid var(--line);
+  border-radius:4px;padding:4px 6px}
+body.touch #tframe{top:8px;left:calc(34vw + 84px);max-width:34vw}
+body.touch #tracker{top:84px;left:8px;right:auto;width:170px;text-align:left;
+  background:#0b0f0da8;border:1px solid #ffffff14;border-left:2px solid var(--gold-dim);
+  border-radius:4px;padding:6px 8px}
+body.touch #tracker h4{font-size:9px;opacity:.7}
+body.touch #tracker .tq{margin-bottom:6px}
+body.touch #tracker .tq-name{font-size:11px;color:#ffd97e}
+body.touch #tracker .tq-obj{font-size:10px}
+body.touch #buffs{top:auto;bottom:calc(14px + env(safe-area-inset-bottom));left:8px;max-width:150px}
+body.touch #minimap{display:block;top:8px;right:8px;width:96px;height:96px;border-radius:12px;
+  border:1px solid var(--gold-dim);box-shadow:0 0 0 2px #0008}
+body.touch #sysbuttons{top:110px;right:8px;display:grid;grid-template-columns:repeat(4,32px);gap:5px}
+body.touch .sysbtn{width:32px;height:32px;background:#0b0f0d99;border-radius:9px;font-size:13px}
+body.touch #gamelog{left:8px;bottom:auto;top:38%;max-height:70px;width:56vw;font-size:10px}
+body.touch #interact{left:auto;right:calc(206px + env(safe-area-inset-right));bottom:calc(160px + env(safe-area-inset-bottom));
+  transform:none;background:linear-gradient(#2a2214,#141008);border:1px solid var(--gold);
+  border-radius:22px;padding:10px 16px;font-size:12px;box-shadow:0 0 16px #e8c86a33}
+body.touch #interact b{display:none}                    /* hide the [E] key hint on touch */
+body.touch #zonebanner{top:22%}
+body.touch #castbar{bottom:calc(230px + env(safe-area-inset-bottom))}
+body.touch #guide{bottom:calc(6px + env(safe-area-inset-bottom));left:38%;transform:translateX(-50%);font-size:11px;max-width:56vw}
+
+/* persistent joystick base */
+body.touch #joy-rest{position:absolute;left:26px;bottom:calc(30px + env(safe-area-inset-bottom));
+  width:110px;height:110px;border:2px solid #ffffff1e;border-radius:50%;background:#0000002a;pointer-events:none}
+body.touch #joy-rest::after{content:"";position:absolute;left:31px;top:31px;width:48px;height:48px;
+  border-radius:50%;background:#ffffff14;border:2px solid #ffffff22}
+
+/* fan skill cluster */
+#touch-buttons{direction:ltr}
+body.touch #touch-buttons{position:absolute;right:env(safe-area-inset-right);bottom:env(safe-area-inset-bottom);
+  width:240px;height:240px;display:block}
+body.touch .tbtn{position:absolute;background:radial-gradient(circle at 35% 30%,#232d26,#0b0f0d 78%);
+  border:2px solid #b7975288;box-shadow:0 0 0 2px #000a,0 2px 8px #000b;font-size:20px}
+body.touch .tbtn:active{border-color:var(--gold);box-shadow:0 0 14px #e8c86a66}
+body.touch .tbtn.big{border-color:#caa64a;font-size:30px;background:radial-gradient(circle at 35% 30%,#33402f,#0d120c 80%)}
+body.touch .tbtn.util{border-color:#ffffff33;font-size:16px;background:radial-gradient(circle at 35% 30%,#20242c,#0b0d12 80%)}
+body.touch .tbtn .key{display:none}

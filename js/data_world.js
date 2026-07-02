@@ -47,10 +47,10 @@ export const ZONES = {
 
 // dungeon interior environment
 export const DUNGEON_ENV = {
-  skyTop: 0x0a0d12, skyMid: 0x11161e, skyBot: 0x181d26, sunColor: 0x7788aa,
+  skyTop: 0x0a0d12, skyMid: 0x11161e, skyBot: 0x181d26, sunColor: 0x9aa8c8,
   sunDir: [0.2, 0.9, 0.1], cloud: 0, night: 0.9,
-  fogColor: 0x0d1117, fogNear: 8, fogFar: 90, sunIntensity: 0.7,
-  hemiSky: 0x445566, hemiGround: 0x1a1410, hemiIntensity: 0.6,
+  fogColor: 0x10141c, fogNear: 14, fogFar: 110, sunIntensity: 1.25,
+  hemiSky: 0x6a7a94, hemiGround: 0x3a3028, hemiIntensity: 1.05,
 };
 
 // ---------------- MOBS ----------------

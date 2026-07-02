@@ -192,11 +192,17 @@ export class Engine {
 
     this.scene.fog = new THREE.Fog(0xc8d8ee, 60, 380);
 
+    setMaxAnisotropy(this.renderer);
     window.addEventListener('resize', () => this.resize());
     this.resize();
   }
 
-  setPixelScale(s) { this.pixelScale = s; this.resize(); }
+  setPixelScale(s) {
+    this.pixelScale = s;
+    // finer render = softer palette quantization so texture detail survives
+    this.blitMat.uniforms.uQuant.value = s <= 2.2 ? 0.18 : s <= 3.6 ? 0.55 : 0.8;
+    this.resize();
+  }
 
   resize() {
     const w = window.innerWidth, h = window.innerHeight;
@@ -250,13 +256,33 @@ export class Engine {
   }
 }
 
-// ---------- shared material cache (flat-shaded painted look) ----------
+// ---------- texture cache (CC0 maps from ambientCG, see assets/textures) ----------
+const texCache = new Map();
+let _maxAniso = 4;
+export function setMaxAnisotropy(renderer) {
+  _maxAniso = Math.min(4, renderer.capabilities.getMaxAnisotropy());
+}
+export function tex(name, repeat = 1) {
+  const key = name + ':' + repeat;
+  if (!texCache.has(key)) {
+    const t = new THREE.TextureLoader().load(`assets/textures/${name}.jpg`);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(repeat, repeat);
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.anisotropy = _maxAniso;
+    texCache.set(key, t);
+  }
+  return texCache.get(key);
+}
+
+// ---------- shared material cache (painted look; opts.tex adds a real texture map) ----------
 const matCache = new Map();
 export function mat(color, opts = {}) {
   const key = color + JSON.stringify(opts);
   if (!matCache.has(key)) {
     matCache.set(key, new THREE.MeshLambertMaterial({
-      color, flatShading: true,
+      color, flatShading: opts.smooth ? false : true,
+      map: opts.tex ? tex(opts.tex, opts.rep ?? 1) : null,
       transparent: !!opts.transparent, opacity: opts.opacity ?? 1,
       emissive: opts.emissive ?? 0x000000, emissiveIntensity: opts.emissiveIntensity ?? 1,
       side: opts.side ?? THREE.FrontSide,
@@ -264,6 +290,8 @@ export function mat(color, opts = {}) {
   }
   return matCache.get(key);
 }
+// smooth-shaded variant for organic shapes (characters)
+export function matS(color, opts = {}) { return mat(color, { ...opts, smooth: true }); }
 export function basicMat(color, opts = {}) {
   const key = 'b' + color + JSON.stringify(opts);
   if (!matCache.has(key)) {

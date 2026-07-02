@@ -2,20 +2,20 @@
 // Entering swaps the overworld out for a themed instance: a chain of rooms and
 // corridors, trash packs guarding the way, and a doorkeeper (boss) at the end.
 // Killing the boss tears a SEAM — the matrix-green exit — plus loot and lore.
-import { THREE, mat, basicMat, rng } from './engine.js';
+import { THREE, mat, basicMat, rng, tex } from './engine.js';
 import { DUNGEONS, DUNGEON_ENV, MOB_TYPES } from './data_world.js';
 import { Mob } from './mobs.js';
 import { generateItem } from './loot.js';
 import { Events } from './combat.js';
 
 const THEMES = {
-  cave:      { floor: 0x4a3d30, wall: 0x35291e, accent: 0x6a5a3a, light: 0xff9040 },
-  crypt:     { floor: 0x3a4248, wall: 0x2a3036, accent: 0x50707a, light: 0x60c0d0 },
-  castle:    { floor: 0x4a4a58, wall: 0x3a3a48, accent: 0x8a7a50, light: 0xffd080 },
-  sewer:     { floor: 0x3a4432, wall: 0x2a3324, accent: 0x5a7a4a, light: 0x90c060 },
-  cathedral: { floor: 0x3f3f4d, wall: 0x2e2e3d, accent: 0x7a8ac0, light: 0x8090ff },
-  tower:     { floor: 0x2e2e3a, wall: 0x232330, accent: 0x5a5a80, light: 0xb0a0ff },
-  keep:      { floor: 0x46505e, wall: 0x333c48, accent: 0x8ab0d0, light: 0xa0d0ff },
+  cave:      { floor: 0x8a7358, wall: 0x6a5a44, accent: 0x6a5a3a, light: 0xff9040, fTex: 'rock', wTex: 'rock' },
+  crypt:     { floor: 0x7a848c, wall: 0x606874, accent: 0x50707a, light: 0x60c0d0, fTex: 'paving', wTex: 'stonewall' },
+  castle:    { floor: 0x8e8ea0, wall: 0x787890, accent: 0x8a7a50, light: 0xffd080, fTex: 'paving', wTex: 'stonewall' },
+  sewer:     { floor: 0x74886a, wall: 0x5c7050, accent: 0x5a7a4a, light: 0x90c060, fTex: 'paving', wTex: 'stonewall' },
+  cathedral: { floor: 0x8080a0, wall: 0x646484, accent: 0x7a8ac0, light: 0x8090ff, fTex: 'paving', wTex: 'stonewall' },
+  tower:     { floor: 0x6a6a84, wall: 0x525268, accent: 0x5a5a80, light: 0xb0a0ff, fTex: 'planks', wTex: 'stonewall' },
+  keep:      { floor: 0x8a9ab0, wall: 0x6c7a94, accent: 0x8ab0d0, light: 0xa0d0ff, fTex: 'paving', wTex: 'stonewall' },
   glitch:    { floor: 0x0e1a14, wall: 0x0a120e, accent: 0x39ff88, light: 0x39ff88 },
   spire:     { floor: 0x14141f, wall: 0x0e0e18, accent: 0x39ff88, light: 0x66ffb0 },
 };
@@ -85,7 +85,7 @@ export class DungeonManager {
 
   // --------------- geometry ---------------
   _wall(x, z, w, d, h, color) {
-    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat(color));
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat(color, this._theme?.wTex ? { tex: this._theme.wTex, rep: 3 } : {}));
     m.position.set(x, h / 2, z);
     this.root.add(m);
     // collider chain along the wall
@@ -97,18 +97,19 @@ export class DungeonManager {
   }
 
   _torch(x, z, color) {
-    const l = new THREE.PointLight(color, 1.4, 18);
+    const l = new THREE.PointLight(color, 2.4, 24);
     l.position.set(x, 3, z);
     this.root.add(l);
     const flame = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.5, 5), basicMat(color));
     flame.position.set(x, 2.6, z);
     this.root.add(flame);
-    this.animated.push((dt, t) => { l.intensity = 1.2 + Math.sin(t * 9 + x) * 0.3; flame.scale.setScalar(0.9 + Math.sin(t * 12 + z) * 0.15); });
+    this.animated.push((dt, t) => { l.intensity = 2.2 + Math.sin(t * 9 + x) * 0.4; flame.scale.setScalar(0.9 + Math.sin(t * 12 + z) * 0.15); });
   }
 
   _build(D) {
     const g = this.game;
     const T = THEMES[D.theme];
+    this._theme = T;
     const R = rng(D.id.length * 999 + 7);
     this.root.visible = true;
     const isRaid = D.type === 'raid';
@@ -126,11 +127,11 @@ export class DungeonManager {
 
     // floor: one big slab under everything
     const totalD = 40 - z;
-    const floor = new THREE.Mesh(new THREE.BoxGeometry(60, 1, totalD + 40), mat(T.floor));
+    const floor = new THREE.Mesh(new THREE.BoxGeometry(60, 1, totalD + 40), mat(T.floor, T.fTex ? { tex: T.fTex, rep: 14 } : {}));
     floor.position.set(0, -0.5, (40 + z) / 2 - 10);
     this.root.add(floor);
     // floor detail tiles
-    const tiles = new THREE.InstancedMesh(new THREE.BoxGeometry(2, 0.12, 2), mat(T.accent), 80);
+    const tiles = new THREE.InstancedMesh(new THREE.BoxGeometry(2, 0.12, 2), mat(T.accent, T.fTex ? { tex: 'paving' } : {}), 80);
     const m4 = new THREE.Matrix4();
     for (let i = 0; i < 80; i++) {
       m4.setPosition((R() - 0.5) * 40, 0.01, z + R() * (totalD));
@@ -166,7 +167,7 @@ export class DungeonManager {
       // props: pillars
       if (r.w > 26) {
         for (const [px, pz] of [[-r.w / 4, 0], [r.w / 4, 0]]) {
-          const pillar = new THREE.Mesh(new THREE.CylinderGeometry(1, 1.2, wallH, 6), mat(T.accent));
+          const pillar = new THREE.Mesh(new THREE.CylinderGeometry(1, 1.2, wallH, 8), mat(T.accent, T.wTex ? { tex: T.wTex, rep: 2 } : {}));
           pillar.position.set(r.x + px, wallH / 2, r.z + pz);
           this.root.add(pillar);
           this.colliders.push({ x: r.x + px, z: r.z + pz, r: 1.4 });

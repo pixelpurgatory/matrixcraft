@@ -163,7 +163,7 @@ showTitle(game, (mode, classId, name) => {
     document.getElementById('boot').style.display = 'none';
     stopRain();
     document.getElementById('hud').classList.remove('hidden');
-    if (IS_TOUCH) document.getElementById('touch-ui').classList.remove('hidden');
+    if (IS_TOUCH) { document.getElementById('touch-ui').classList.remove('hidden'); document.body.classList.add('touch'); }
     if (mode === 'new') game.newGame(classId, name);
     else game.loadGame(game.readSave());
     game.hud = new HUD(game, input);

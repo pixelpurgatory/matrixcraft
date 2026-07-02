@@ -1,5 +1,5 @@
 // ============ WORLD BUILDER — terrain, roads, villages, castles, landmarks ============
-import { THREE, mat, basicMat, rng } from './engine.js';
+import { THREE, mat, basicMat, rng, tex } from './engine.js';
 import { ZONES } from './data_world.js';
 import { buildBeast } from './entities.js';
 
@@ -113,44 +113,50 @@ export class World {
       L.dg_spire = { x: 0, z: -122 };
     }
 
-    // flatten around landmarks
+    // flatten around landmarks (must be complete BEFORE the terrain bakes heights)
     this.flattens = [];
     for (const k of Object.keys(L)) {
       const base = (k === 'castle') ? 14 : 0.5;
       this.flattens.push({ x: L[k].x, z: L[k].z, r: k === 'village' ? 42 : 24, h: base });
     }
+    if (zoneId === 'eldergreen') this.flattens.push({ x: L.castle.x, z: L.castle.z, r: 60, h: 14 });
+    if (zoneId === 'ashmoor') this.flattens.push({ x: L.castle.x, z: L.castle.z, r: 50, h: 10 });
+    if (zoneId === 'veilspire') this.flattens.push({ x: L.castle.x, z: L.castle.z, r: 55, h: 16 });
 
-    // ---------- terrain ----------
-    const segs = 110;
+    // ---------- terrain (real texture, vertex colors act as tints) ----------
+    const segs = 150;
     const geo = new THREE.PlaneGeometry(this.size, this.size, segs, segs);
     geo.rotateX(-Math.PI / 2);
     const pos = geo.attributes.position;
     const colors = new Float32Array(pos.count * 3);
-    const cBase = new THREE.Color(Z.ground.base), cHi = new THREE.Color(Z.ground.hi),
-          cLow = new THREE.Color(Z.ground.low), cPath = new THREE.Color(Z.ground.path);
     // main road: from spawn through village toward castle + branches to dungeons
     const roadPts = this._roadPoints(L);
     this.roadPts = roadPts;
+    const groundTex = { fairytale: 'grass', gothic: 'dirt', storm: 'snow' }[Z.biome];
+    const pathTint = { fairytale: [2.1, 1.62, 0.85], gothic: [1.45, 1.52, 1.55], storm: [0.6, 0.63, 0.74] }[Z.biome];
+    const altTint = Z.biome === 'storm' ? [1.12, 1.14, 1.2] : [1.05, 1.05, 1.18];
     const tmp = new THREE.Color();
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i), z = pos.getZ(i);
       const h = this.groundH(x, z);
       pos.setY(i, h);
       const n = this.noise(x * 0.05 + 99, z * 0.05 + 99, 3);
-      tmp.copy(cBase).lerp(h > 20 ? new THREE.Color(0xffffff) : cHi, THREE.MathUtils.clamp((h - 2) / 22, 0, 1));
-      if (n < -0.15) tmp.lerp(cLow, 0.6);
-      // road tint
+      tmp.setRGB(1, 1, 1);
+      if (n < -0.15) tmp.multiplyScalar(0.78);            // damp hollows
+      else if (n > 0.28) tmp.multiplyScalar(1.1);         // sunlit patches
+      const alt = THREE.MathUtils.clamp((h - 12) / 26, 0, 1);
+      tmp.lerp(new THREE.Color(...altTint), alt);         // rocky/snowy heights
       let dRoad = Infinity;
       for (const rp of roadPts) { const d = Math.hypot(x - rp.x, z - rp.z); if (d < dRoad) dRoad = d; }
-      if (dRoad < 4.5) tmp.lerp(cPath, 0.85 - dRoad / 6);
-      // per-vertex dither for painted look
-      const dith = (this.noise(x * 0.6, z * 0.6, 2)) * 0.07;
+      if (dRoad < 4.5) tmp.lerp(new THREE.Color(...pathTint), 0.85 - dRoad / 6);
+      const dith = (this.noise(x * 0.6, z * 0.6, 2)) * 0.05;
       tmp.r += dith; tmp.g += dith; tmp.b += dith;
       colors[i * 3] = tmp.r; colors[i * 3 + 1] = tmp.g; colors[i * 3 + 2] = tmp.b;
     }
     geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
     geo.computeVertexNormals();
-    const ground = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }));
+    const ground = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({
+      vertexColors: true, map: tex(groundTex, Math.round(this.size / 9)) }));
     this.root.add(ground);
 
     // ---------- water: rippling surface + sun sparkles ----------
@@ -227,11 +233,11 @@ export class World {
     const biome = Z.biome;
     // tree archetype geometry per biome
     let trunkGeo, crownGeo, crownMat, trunkMat, crownMat2;
-    trunkGeo = new THREE.CylinderGeometry(0.25, 0.4, 3, 5);
-    trunkMat = mat(biome === 'gothic' ? 0x3a332e : 0x4a3524);
-    if (biome === 'fairytale') { crownGeo = new THREE.IcosahedronGeometry(2.2, 0); crownMat = mat(0x3f7a2f); crownMat2 = mat(0x578f3a); }
-    else if (biome === 'gothic') { crownGeo = new THREE.IcosahedronGeometry(1.6, 0); crownMat = mat(0x4a4238); crownMat2 = mat(0x5d4a3a); }
-    else { crownGeo = new THREE.ConeGeometry(1.8, 4.5, 6); crownMat = mat(0x2e4a3e); crownMat2 = mat(0x3a5a4a); }
+    trunkGeo = new THREE.CylinderGeometry(0.25, 0.4, 3, 7);
+    trunkMat = mat(biome === 'gothic' ? 0x8a7f74 : 0xb59f8a, { tex: 'bark' });
+    if (biome === 'fairytale') { crownGeo = new THREE.IcosahedronGeometry(2.2, 1); crownMat = mat(0x3f7a2f); crownMat2 = mat(0x578f3a); }
+    else if (biome === 'gothic') { crownGeo = new THREE.IcosahedronGeometry(1.6, 1); crownMat = mat(0x4a4238); crownMat2 = mat(0x5d4a3a); }
+    else { crownGeo = new THREE.ConeGeometry(1.8, 4.5, 8); crownMat = mat(0x2e4a3e); crownMat2 = mat(0x3a5a4a); }
 
     const trunks = new THREE.InstancedMesh(trunkGeo, trunkMat, count);
     const crowns = new THREE.InstancedMesh(crownGeo, crownMat, count);
@@ -261,7 +267,7 @@ export class World {
 
     // rocks
     const rockGeo = new THREE.DodecahedronGeometry(1, 0);
-    const rocks = new THREE.InstancedMesh(rockGeo, mat(Z.biome === 'storm' ? 0x6a7484 : 0x7a7468), 120);
+    const rocks = new THREE.InstancedMesh(rockGeo, mat(Z.biome === 'storm' ? 0xa8b2c2 : 0xc2b8a8, { tex: 'rock' }), 120);
     let nr = 0;
     for (let i = 0; i < 300 && nr < 120; i++) {
       const x = (R() - 0.5) * this.size * 0.9, z = (R() - 0.5) * this.size * 0.9;
@@ -289,16 +295,17 @@ export class World {
   _house(x, z, R, opts = {}) {
     const gh = this.groundH(x, z);
     const w = 5 + R() * 3, d = 5 + R() * 2, h = 3 + R() * 1;
-    const wall = opts.wall ?? 0xc9b892, roof = opts.roof ?? 0x8a4a2a;
+    const wall = opts.wall ?? 0xc9b892;
+    const roof = ((c) => new THREE.Color(c).multiplyScalar(2.1).getHex())(opts.roof ?? 0x8a4a2a);
     const ry = R() * Math.PI * 2;
     const g = new THREE.Group(); g.position.set(x, gh, z); g.rotation.y = ry;
-    const base = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat(wall)); base.position.y = h / 2; g.add(base);
+    const base = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat(wall, { tex: 'plaster', rep: 2 })); base.position.y = h / 2; g.add(base);
     // timber frame
-    const beam = new THREE.Mesh(new THREE.BoxGeometry(w + 0.1, 0.25, d + 0.1), mat(0x5a4028)); beam.position.y = h; g.add(beam);
-    const roofM = new THREE.Mesh(new THREE.CylinderGeometry(0.01, d * 0.75, h * 0.9, 4, 1), mat(roof));
+    const beam = new THREE.Mesh(new THREE.BoxGeometry(w + 0.1, 0.25, d + 0.1), mat(0x8a6a48, { tex: 'planks' })); beam.position.y = h; g.add(beam);
+    const roofM = new THREE.Mesh(new THREE.CylinderGeometry(0.01, d * 0.75, h * 0.9, 4, 1), mat(roof, { tex: 'roof', rep: 2 }));
     roofM.rotation.y = Math.PI / 4; roofM.scale.x = w / d;
     roofM.position.y = h + h * 0.45; g.add(roofM);
-    const door = new THREE.Mesh(new THREE.BoxGeometry(1, 1.8, 0.15), mat(0x4a3018)); door.position.set(0, 0.9, d / 2 + 0.05); g.add(door);
+    const door = new THREE.Mesh(new THREE.BoxGeometry(1, 1.8, 0.15), mat(0x7a5a38, { tex: 'planks' })); door.position.set(0, 0.9, d / 2 + 0.05); g.add(door);
     // warm window light
     const win = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.8, 0.1), basicMat(0xffd88a)); win.position.set(w / 4, h * 0.6, d / 2 + 0.05); g.add(win);
     this.root.add(g);
@@ -307,10 +314,11 @@ export class World {
   }
 
   _tower(x, z, h, r, color, roofColor) {
+    roofColor = new THREE.Color(roofColor).multiplyScalar(2.1).getHex();
     const gh = this.groundH(x, z);
-    const t = new THREE.Mesh(new THREE.CylinderGeometry(r, r * 1.15, h, 8), mat(color));
+    const t = new THREE.Mesh(new THREE.CylinderGeometry(r, r * 1.15, h, 10), mat(color, { tex: 'stonewall', rep: 3 }));
     t.position.set(x, gh + h / 2, z); this.root.add(t);
-    const roof = new THREE.Mesh(new THREE.ConeGeometry(r * 1.35, h * 0.4, 8), mat(roofColor));
+    const roof = new THREE.Mesh(new THREE.ConeGeometry(r * 1.35, h * 0.4, 10), mat(roofColor, { tex: 'roof', rep: 2 }));
     roof.position.set(x, gh + h + h * 0.2, z); this.root.add(roof);
     // lit windows
     for (let i = 0; i < 3; i++) {
@@ -331,18 +339,18 @@ export class World {
     // curtain walls (4 segments) + corner towers + huge keep
     const wallLen = 46 * scale, wallH = 10 * scale;
     for (const [dx, dz, ry] of [[0, wallLen / 2, 0], [0, -wallLen / 2, 0], [wallLen / 2, 0, Math.PI / 2], [-wallLen / 2, 0, Math.PI / 2]]) {
-      const w = new THREE.Mesh(new THREE.BoxGeometry(wallLen, wallH, 3), mat(stone));
+      const w = new THREE.Mesh(new THREE.BoxGeometry(wallLen, wallH, 3), mat(stone, { tex: 'stonewall', rep: 4 }));
       w.position.set(cx + dx, gh + wallH / 2, cz + dz); w.rotation.y = ry; this.root.add(w);
       // crenellations
-      const cren = new THREE.Mesh(new THREE.BoxGeometry(wallLen, 1.4, 3.6), mat(stone));
+      const cren = new THREE.Mesh(new THREE.BoxGeometry(wallLen, 1.4, 3.6), mat(stone, { tex: 'stonewall', rep: 4 }));
       cren.position.set(cx + dx, gh + wallH + 0.7, cz + dz); cren.rotation.y = ry; this.root.add(cren);
     }
     for (const [dx, dz] of [[1, 1], [1, -1], [-1, 1], [-1, -1]])
       this._tower(cx + dx * wallLen / 2, cz + dz * wallLen / 2, 16 * scale, 3.4 * scale, stone, roof);
     // keep: layered blocks + spires (silhouette from the screenshot)
-    const keep = new THREE.Mesh(new THREE.BoxGeometry(20 * scale, 22 * scale, 16 * scale), mat(stone));
+    const keep = new THREE.Mesh(new THREE.BoxGeometry(20 * scale, 22 * scale, 16 * scale), mat(stone, { tex: 'stonewall', rep: 4 }));
     keep.position.set(cx, gh + 11 * scale, cz); this.root.add(keep);
-    const keep2 = new THREE.Mesh(new THREE.BoxGeometry(12 * scale, 32 * scale, 10 * scale), mat(stone));
+    const keep2 = new THREE.Mesh(new THREE.BoxGeometry(12 * scale, 32 * scale, 10 * scale), mat(stone, { tex: 'stonewall', rep: 4 }));
     keep2.position.set(cx, gh + 16 * scale, cz - 2); this.root.add(keep2);
     this._towerAt(cx - 8 * scale, cz + 4, gh, 34 * scale, 2.6 * scale, stone, roof);
     this._towerAt(cx + 8 * scale, cz + 4, gh, 30 * scale, 2.4 * scale, stone, roof);
@@ -358,21 +366,22 @@ export class World {
   }
 
   _towerAt(x, z, gh, h, r, color, roofColor) {
-    const t = new THREE.Mesh(new THREE.CylinderGeometry(r, r * 1.1, h, 8), mat(color));
+    roofColor = new THREE.Color(roofColor).multiplyScalar(2.1).getHex();
+    const t = new THREE.Mesh(new THREE.CylinderGeometry(r, r * 1.1, h, 10), mat(color, { tex: 'stonewall', rep: 3 }));
     t.position.set(x, gh + h / 2, z); this.root.add(t);
-    const roof = new THREE.Mesh(new THREE.ConeGeometry(r * 1.4, h * 0.3, 8), mat(roofColor));
+    const roof = new THREE.Mesh(new THREE.ConeGeometry(r * 1.4, h * 0.3, 10), mat(roofColor, { tex: 'roof', rep: 2 }));
     roof.position.set(x, gh + h + h * 0.15, z); this.root.add(roof);
   }
 
   _windmill(x, z) {
     const gh = this.groundH(x, z);
-    const body = new THREE.Mesh(new THREE.CylinderGeometry(2.4, 3.4, 9, 8), mat(0xd8cba8));
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(2.4, 3.4, 9, 10), mat(0xd8cba8, { tex: 'plaster', rep: 2 }));
     body.position.set(x, gh + 4.5, z); this.root.add(body);
-    const roof = new THREE.Mesh(new THREE.ConeGeometry(2.8, 2.4, 8), mat(0x7a4a2a));
+    const roof = new THREE.Mesh(new THREE.ConeGeometry(2.8, 2.4, 10), mat(0xd8935a, { tex: 'roof', rep: 2 }));
     roof.position.set(x, gh + 10.2, z); this.root.add(roof);
     const hub = new THREE.Group(); hub.position.set(x, gh + 8.4, z + 2.6); this.root.add(hub);
     for (let i = 0; i < 4; i++) {
-      const blade = new THREE.Mesh(new THREE.BoxGeometry(0.5, 7, 0.12), mat(0xe8e0c8));
+      const blade = new THREE.Mesh(new THREE.BoxGeometry(0.5, 7, 0.12), mat(0xe8e0c8, { tex: 'planks' }));
       blade.position.y = 3.5;
       const arm = new THREE.Group(); arm.rotation.z = i * Math.PI / 2; arm.add(blade); hub.add(arm);
     }
@@ -382,7 +391,7 @@ export class World {
 
   _gravestones(cx, cz, R, n = 26) {
     const geo = new THREE.BoxGeometry(0.7, 1.1, 0.18);
-    const im = new THREE.InstancedMesh(geo, mat(0x767c72), n);
+    const im = new THREE.InstancedMesh(geo, mat(0xb2b8ae, { tex: 'rock' }), n);
     const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(1, 1, 1), p = new THREE.Vector3();
     for (let i = 0; i < n; i++) {
       const a = R() * Math.PI * 2, d = 4 + R() * 18;
@@ -447,7 +456,7 @@ export class World {
 
   _well(x, z) {
     const gh = this.groundH(x, z);
-    const ring = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.3, 1, 8), mat(0x8a8578));
+    const ring = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.3, 1, 10), mat(0xb8b2a2, { tex: 'stonewall' }));
     ring.position.set(x, gh + 0.5, z); this.root.add(ring);
     const roofL = this._box(0.16, 2.2, 0.16, 0x5a4028, x - 1, gh + 1.6, z);
     const roofR = this._box(0.16, 2.2, 0.16, 0x5a4028, x + 1, gh + 1.6, z);
@@ -470,7 +479,6 @@ export class World {
     this._box(1, 4, 1, 0x5a4028, -3, this.groundH(-3, 24) + 2, 24);
     this._box(1, 4, 1, 0x5a4028, 3, this.groundH(3, 24) + 2, 24);
     // the castle on the hill (backdrop + raid entrance)
-    this.flattens.push({ x: L.castle.x, z: L.castle.z, r: 60, h: 14 });
     this._castle(L.castle.x, L.castle.z, { stone: 0x646a8c, roof: 0x3c4066, scale: 1.3 });
     // scattered farms
     this._house(40, 20, R); this._house(56, 44, R); this._house(-52, -48, R, { wall: 0xd0c0a0 });
@@ -492,14 +500,15 @@ export class World {
     for (let i = 0; i < 10; i++) {
       const a = R() * Math.PI * 2, d = 30 + R() * 50;
       const x = L.plaza.x + Math.cos(a) * d, z = L.plaza.z + Math.sin(a) * d;
-      this._box(4 + R() * 5, 2 + R() * 3, 1, 0x5d6058, x, this.groundH(x, z) + 1.4, z, R() * 3);
+      const bw = new THREE.Mesh(new THREE.BoxGeometry(4 + R() * 5, 2 + R() * 3, 1), mat(0x9aa098, { tex: 'stonewall', rep: 2 }));
+      bw.position.set(x, this.groundH(x, z) + 1.4, z); bw.rotation.y = R() * 3; this.root.add(bw);
     }
     this._gravestones(L.graveyard.x, L.graveyard.z, R, 34);
     this._campfire(L.plaza.x - 5, L.plaza.z + 4);
     // cathedral (gallows dungeon facade)
     const cg = L.cathedral_gate;
     const gh = this.groundH(cg.x, cg.z - 10);
-    const nave = new THREE.Mesh(new THREE.BoxGeometry(16, 14, 26), mat(0x565c66));
+    const nave = new THREE.Mesh(new THREE.BoxGeometry(16, 14, 26), mat(0x8a92a0, { tex: 'stonewall', rep: 4 }));
     nave.position.set(cg.x, gh + 7, cg.z - 16); this.root.add(nave);
     const naveRoof = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 11, 6, 4), mat(0x2e333d));
     naveRoof.rotation.y = Math.PI / 4; naveRoof.scale.z = 26 / 22; naveRoof.position.set(cg.x, gh + 17, cg.z - 16); this.root.add(naveRoof);
@@ -510,7 +519,6 @@ export class World {
     rose.position.set(cg.x, gh + 10, cg.z - 2.9); this.root.add(rose);
     this.colliders.push({ x: cg.x, z: cg.z - 16, r: 12 });
     // rookery tower backdrop (raid)
-    this.flattens.push({ x: L.castle.x, z: L.castle.z, r: 50, h: 10 });
     this._towerAt(L.castle.x, L.castle.z, this.groundH(L.castle.x, L.castle.z), 60, 6, 0x3d3f4d, 0x22232e);
     this._towerAt(L.castle.x - 12, L.castle.z + 6, this.groundH(L.castle.x - 12, L.castle.z + 6), 34, 3.4, 0x3d3f4d, 0x22232e);
     // dead trees already gothic. lore terminals:
@@ -537,7 +545,6 @@ export class World {
     }
     // THE SPIRE — black needle with green seams
     const S = L.castle; const gh = this.groundH(S.x, S.z);
-    this.flattens.push({ x: S.x, z: S.z, r: 55, h: 16 });
     const spire = new THREE.Mesh(new THREE.CylinderGeometry(2, 9, 90, 6), mat(0x14161f));
     spire.position.set(S.x, gh + 45, S.z); this.root.add(spire);
     for (let i = 0; i < 5; i++) {
@@ -636,7 +643,7 @@ export class World {
 
     // ---- cobblestones along the roads ----
     const cobGeo = new THREE.CylinderGeometry(0.4, 0.45, 0.09, 6);
-    const cob = new THREE.InstancedMesh(cobGeo, mat(zoneId === 'eldergreen' ? 0xb59a56 : 0x6d7a72), 240);
+    const cob = new THREE.InstancedMesh(cobGeo, mat(zoneId === 'eldergreen' ? 0xd8c090 : 0xa8b2a8, { tex: 'paving' }), 240);
     let nc = 0;
     for (let i = 0; i < this.roadPts.length && nc < 240; i += 3) {
       const rp = this.roadPts[i];
@@ -731,7 +738,7 @@ export class World {
       const x = V.x + Math.cos(a) * 25, z = V.z + Math.sin(a) * 25;
       const h = this.groundH(x, z);
       this._box(0.14, 1.1, 0.14, 0x6a5238, x, h + 0.55, z);
-      const rail = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.12, 5.4), mat(0x7a6244));
+      const rail = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.12, 5.4), mat(0xa08a64, { tex: 'planks' }));
       rail.position.set(V.x + Math.cos(a + 0.12) * 25, h + 0.8, V.z + Math.sin(a + 0.12) * 25);
       rail.rotation.y = -a - 0.12 + Math.PI / 2 + 0.25;
       this.root.add(rail);
@@ -739,7 +746,8 @@ export class World {
     // market stall by the well
     const W = L.well;
     const sx = W.x + 4, sz = W.z + 3, sh = this.groundH(sx, sz);
-    this._box(2.4, 0.9, 1.1, 0x8a6a42, sx, sh + 0.45, sz);
+    const counter = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.9, 1.1), mat(0xa8845a, { tex: 'planks' }));
+    counter.position.set(sx, sh + 0.45, sz); this.root.add(counter);
     for (const [dx, dz] of [[-1.1, -0.45], [1.1, -0.45], [-1.1, 0.45], [1.1, 0.45]])
       this._box(0.1, 2.2, 0.1, 0x5a4028, sx + dx, sh + 1.1, sz + dz);
     const awning = new THREE.Mesh(new THREE.BoxGeometry(2.8, 0.08, 1.6), mat(0xb04a3a));
@@ -749,8 +757,8 @@ export class World {
     this.colliders.push({ x: sx, z: sz, r: 1.6 });
 
     // crates & barrels near cottages
-    const crate = new THREE.InstancedMesh(new THREE.BoxGeometry(0.7, 0.7, 0.7), mat(0x8a6a42), 14);
-    const barrel = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.34, 0.34, 0.8, 7), mat(0x6a4a30), 10);
+    const crate = new THREE.InstancedMesh(new THREE.BoxGeometry(0.7, 0.7, 0.7), mat(0xb08a5a, { tex: 'planks' }), 14);
+    const barrel = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.34, 0.34, 0.8, 9), mat(0x8a6240, { tex: 'planks' }), 10);
     let ncr = 0, nba = 0;
     for (let i = 0; i < 30 && (ncr < 14 || nba < 10); i++) {
       const a = R() * 6.28, d = 11 + R() * 8;

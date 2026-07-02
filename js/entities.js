@@ -3,9 +3,12 @@
 // Animation is code-driven: walk cycles, attack swings, casts, hit reacts, deaths.
 // The pixel pass makes these read as chunky hand-placed sprites in 3D.
 
-import { THREE, mat, basicMat } from './engine.js';
+import { THREE, mat, matS, basicMat } from './engine.js';
 
 const B = (w, h, d, color) => new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat(color));
+// smooth organic primitives for bodies (higher-res look than raw boxes)
+const CAP = (r, len, color) => new THREE.Mesh(new THREE.CapsuleGeometry(r, len, 4, 10), matS(color));
+const SPH = (r, color) => new THREE.Mesh(new THREE.SphereGeometry(r, 14, 11), matS(color));
 
 // palette helpers per class
 const CLASS_SKIN = {
@@ -22,22 +25,22 @@ export function buildHumanoid(opts = {}) {
   const g = new THREE.Group();
   const scale = opts.scale || 1;
 
-  const torso = B(0.62, 0.72, 0.36, c.robe); torso.position.y = 1.05; g.add(torso);
-  const chest = B(0.66, 0.22, 0.4, c.trim); chest.position.y = 0.28; torso.add(chest);
-  const head = B(0.42, 0.42, 0.4, c.skin); head.position.y = 1.65; g.add(head);
-  const hair = B(0.46, 0.16, 0.44, c.hair); hair.position.y = 0.24; head.add(hair);
+  const torso = CAP(0.32, 0.4, c.robe); torso.position.y = 1.05; torso.scale.z = 0.72; g.add(torso);
+  const chest = B(0.62, 0.22, 0.44, c.trim); chest.position.y = 0.26; torso.add(chest);
+  const head = SPH(0.26, c.skin); head.position.y = 1.68; g.add(head);
+  const hair = SPH(0.27, c.hair); hair.position.y = 0.06; hair.scale.y = 0.72; head.add(hair);
 
   const mkArm = (side) => {
-    const pivot = new THREE.Group(); pivot.position.set(0.42 * side, 1.36, 0); g.add(pivot);
-    const arm = B(0.2, 0.62, 0.2, c.robe); arm.position.y = -0.31; pivot.add(arm);
-    const hand = B(0.18, 0.16, 0.18, c.skin); hand.position.y = -0.38; arm.add(hand);
+    const pivot = new THREE.Group(); pivot.position.set(0.4 * side, 1.36, 0); g.add(pivot);
+    const arm = CAP(0.095, 0.4, c.robe); arm.position.y = -0.29; pivot.add(arm);
+    const hand = SPH(0.1, c.skin); hand.position.y = -0.34; arm.add(hand);
     return pivot;
   };
   const armL = mkArm(-1), armR = mkArm(1);
 
   const mkLeg = (side) => {
-    const pivot = new THREE.Group(); pivot.position.set(0.17 * side, 0.72, 0); g.add(pivot);
-    const leg = B(0.22, 0.7, 0.24, opts.legColor ?? 0x2c2c34); leg.position.y = -0.36; pivot.add(leg);
+    const pivot = new THREE.Group(); pivot.position.set(0.16 * side, 0.74, 0); g.add(pivot);
+    const leg = CAP(0.11, 0.46, opts.legColor ?? 0x2c2c34); leg.position.y = -0.36; pivot.add(leg);
     return pivot;
   };
   const legL = mkLeg(-1), legR = mkLeg(1);
@@ -74,8 +77,8 @@ export function buildHumanoid(opts = {}) {
   }
 
   // simple face (two dark pixels)
-  const eyeL = B(0.06, 0.08, 0.02, 0x1a1a1a); eyeL.position.set(-0.1, 0.02, 0.21); head.add(eyeL);
-  const eyeR = B(0.06, 0.08, 0.02, 0x1a1a1a); eyeR.position.set(0.1, 0.02, 0.21); head.add(eyeR);
+  const eyeL = B(0.06, 0.08, 0.02, 0x1a1a1a); eyeL.position.set(-0.09, 0.02, 0.24); head.add(eyeL);
+  const eyeR = B(0.06, 0.08, 0.02, 0x1a1a1a); eyeR.position.set(0.09, 0.02, 0.24); head.add(eyeR);
 
   g.scale.setScalar(scale);
   g.userData.rig = { torso, head, armL, armR, legL, legR, weapon, type: 'humanoid' };
@@ -122,8 +125,9 @@ export function buildGhost(color = 0xa8c8d8) {
 // quadruped beast (wolf/boar/hound)
 export function buildBeast(color = 0x7a7d85, bulk = 1) {
   const g = new THREE.Group();
-  const body = B(0.5 * bulk, 0.5 * bulk, 1.1 * bulk, color); body.position.y = 0.62 * bulk; g.add(body);
-  const head = B(0.4 * bulk, 0.38 * bulk, 0.5 * bulk, color); head.position.set(0, 0.78 * bulk, 0.72 * bulk); g.add(head);
+  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.28 * bulk, 0.65 * bulk, 4, 10).rotateX(Math.PI / 2), matS(color));
+  body.position.y = 0.62 * bulk; g.add(body);
+  const head = SPH(0.24 * bulk, color); head.position.set(0, 0.78 * bulk, 0.72 * bulk); g.add(head);
   const snout = B(0.22 * bulk, 0.18 * bulk, 0.26 * bulk, 0x3a3a3a); snout.position.set(0, -0.06 * bulk, 0.32 * bulk); head.add(snout);
   const earL = B(0.1, 0.16, 0.06, color); earL.position.set(-0.13 * bulk, 0.26 * bulk, -0.05); head.add(earL);
   const earR = earL.clone(); earR.position.x *= -1; head.add(earR);
@@ -134,7 +138,7 @@ export function buildBeast(color = 0x7a7d85, bulk = 1) {
   const legs = [];
   for (const [sx, sz] of [[-1, 1], [1, 1], [-1, -1], [1, -1]]) {
     const pivot = new THREE.Group(); pivot.position.set(0.2 * bulk * sx, 0.45 * bulk, 0.38 * bulk * sz); g.add(pivot);
-    const leg = B(0.14 * bulk, 0.45 * bulk, 0.16 * bulk, color); leg.position.y = -0.24 * bulk; pivot.add(leg);
+    const leg = CAP(0.075 * bulk, 0.3 * bulk, color); leg.position.y = -0.24 * bulk; pivot.add(leg);
     legs.push(pivot);
   }
   g.userData.rig = { torso: body, head, legs, tail, type: 'beast' };
