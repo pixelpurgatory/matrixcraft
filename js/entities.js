@@ -62,7 +62,16 @@ export function buildHumanoid(opts = {}) {
     const blade = B(0.08, 0.95, 0.16, 0xb8c0cc); blade.position.y = 0.5; weapon.add(blade);
     const hilt = B(0.26, 0.08, 0.1, 0x8a6a30); hilt.position.y = 0.05; weapon.add(hilt);
   }
-  if (weapon) { weapon.position.set(0, -0.72, 0.08); armR.add(weapon); }
+  if (weapon) {
+    weapon.position.set(0, -0.72, 0.08); armR.add(weapon);
+    // quality glow strip — hidden until gear earns it (player.recalcStats controls it)
+    const qGlow = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.9, 0.06),
+      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85 }));
+    qGlow.position.y = 0.55;
+    qGlow.visible = false;
+    weapon.add(qGlow);
+    weapon.userData.qGlow = qGlow;
+  }
 
   // simple face (two dark pixels)
   const eyeL = B(0.06, 0.08, 0.02, 0x1a1a1a); eyeL.position.set(-0.1, 0.02, 0.21); head.add(eyeL);
@@ -118,7 +127,8 @@ export function buildBeast(color = 0x7a7d85, bulk = 1) {
   const snout = B(0.22 * bulk, 0.18 * bulk, 0.26 * bulk, 0x3a3a3a); snout.position.set(0, -0.06 * bulk, 0.32 * bulk); head.add(snout);
   const earL = B(0.1, 0.16, 0.06, color); earL.position.set(-0.13 * bulk, 0.26 * bulk, -0.05); head.add(earL);
   const earR = earL.clone(); earR.position.x *= -1; head.add(earR);
-  const eyeL = B(0.06, 0.06, 0.02, 0xffcc44); eyeL.position.set(-0.11 * bulk, 0.06, 0.26 * bulk); head.add(eyeL);
+  const eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.02), basicMat(0xffcc44));
+  eyeL.position.set(-0.11 * bulk, 0.06, 0.26 * bulk); head.add(eyeL);
   const eyeR = eyeL.clone(); eyeR.position.x *= -1; head.add(eyeR);
   const tail = B(0.12, 0.12, 0.44 * bulk, color); tail.position.set(0, 0.72 * bulk, -0.66 * bulk); tail.rotation.x = -0.5; g.add(tail);
   const legs = [];
@@ -140,7 +150,8 @@ export function buildWerewolf(color = 0x5d554e) {
   const snout = B(0.24, 0.2, 0.36, 0x2a2622); snout.position.set(0, -0.05, 0.3); r.head.add(snout);
   const earL = B(0.1, 0.22, 0.08, color); earL.position.set(-0.15, 0.3, 0); r.head.add(earL);
   const earR = earL.clone(); earR.position.x *= -1; r.head.add(earR);
-  const eyeL = B(0.07, 0.07, 0.02, 0xffdd33); eyeL.position.set(-0.11, 0.05, 0.22); r.head.add(eyeL);
+  const eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.07, 0.02), basicMat(0xffdd33));
+  eyeL.position.set(-0.11, 0.05, 0.22); r.head.add(eyeL);
   const eyeR = eyeL.clone(); eyeR.position.x *= -1; r.head.add(eyeR);
   r.torso.rotation.x = 0.28;
   // claws
@@ -203,6 +214,15 @@ export function buildPlayerModel(classId) {
   const skin = CLASS_SKIN[classId];
   const weapons = { mage: 'staff', barbarian: 'axe', hunter: 'rifle' };
   const m = buildHumanoid({ colors: skin, weapon: weapons[classId], legColor: 0x2c2c34 });
+  // hero cloak, swaying with movement
+  const cloakColors = { mage: 0x1c2f52, barbarian: 0x4a2018, hunter: 0x24361f };
+  const cloakPivot = new THREE.Group();
+  cloakPivot.position.set(0, 1.48, -0.2);
+  const cloak = B(0.6, 0.85, 0.06, cloakColors[classId]);
+  cloak.position.y = -0.42;
+  cloakPivot.add(cloak);
+  m.add(cloakPivot);
+  m.userData.rig.cloak = cloakPivot;
   if (classId === 'barbarian') {
     const r = m.userData.rig;
     const pauldron = B(0.3, 0.2, 0.4, 0x8a5a3a); pauldron.position.set(0.42, 1.44, 0); m.add(pauldron);
@@ -296,6 +316,11 @@ export class Animator {
       }
       if (walking) this.g.position.y = this.baseY + Math.abs(Math.sin(wt)) * 0.06;
       else if (!this.g.userData.floats) this.g.position.y = this.baseY;
+      // cloak sway: billows when running, drifts when idle
+      if (r.cloak) {
+        const want = walking ? 0.34 + Math.abs(Math.sin(wt)) * 0.16 : 0.06 + Math.sin(t * 1.6) * 0.04;
+        r.cloak.rotation.x += (want - r.cloak.rotation.x) * 0.15;
+      }
     }
 
     if (r.type === 'beast') {

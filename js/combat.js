@@ -296,6 +296,24 @@ export class VFX {
     this.live.push({ obj: beam, t: 0, life, tick: (fx) => { m.opacity = 0.9 * (1 - fx.t / life); } });
   }
 
+  // melee swing arc: a glowing crescent that sweeps with the blow
+  swingArc(actor, color = 0xffe0aa) {
+    const geo = new THREE.TorusGeometry(1.5, 0.09, 4, 14, 2.4);
+    const m = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.85,
+      blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+    const arc = new THREE.Mesh(geo, m);
+    arc.position.copy(actor.pos); arc.position.y += 1.3;
+    arc.rotation.order = 'YXZ';
+    arc.rotation.y = actor.facing + Math.PI / 2 + 0.9;
+    arc.rotation.x = -0.4;
+    this.game.scene.add(arc);
+    this.live.push({ obj: arc, t: 0, life: 0.22, tick: (fx, dt) => {
+      arc.rotation.y -= dt * 11;
+      m.opacity = 0.85 * (1 - fx.t / fx.life);
+      arc.scale.setScalar(1 + fx.t * 1.4);
+    } });
+  }
+
   aura(actor, color, dur = 1.2) {
     const m = new THREE.Mesh(new THREE.SphereGeometry(1.1, 10, 8),
       new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.28, depthWrite: false }));
@@ -602,6 +620,7 @@ export class SkillRunner {
       // ---- melee swings ----
       case ['cleave', 'skullsplitter', 'rampage', 'execute'].includes(skill.id): {
         a.anim.play('attack');
+        vfx.swingArc(a, skill.fx?.swing || 0xffe0aa);
         g.schedule(0.18, () => {
           if (skill.aoe) {
             // frontal cone-ish: all hostiles within aoe of point in front
@@ -624,6 +643,7 @@ export class SkillRunner {
         a.anim.play('spin');
         const spins = this.hasTalent('bladestorm') ? 4 : skill.hits;
         scheduleHits(spins, skill.hitInterval, () => {
+          vfx.swingArc(a, 0xffbb88);
           vfx.ring(a.pos, 0xffbb88, skill.aoe, 0.3);
           this._aoeAround(a.pos, skill.aoe, m => this._dealDamage(skill, m, skill.dmg(ctx)));
         });

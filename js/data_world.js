@@ -35,9 +35,9 @@ export const ZONES = {
     biome: 'storm', // snow-scoured crags, black citadel, aurora-green rifts in the sky
     env: {
       skyTop: 0x131b2e, skyMid: 0x3d4f77, skyBot: 0x6a7899, sunColor: 0xbccdf5,
-      sunDir: [0.1, 0.35, -0.6], cloud: 0.7, night: 0.55,
-      fogColor: 0x3d4a66, fogNear: 26, fogFar: 190, sunIntensity: 1.1,
-      hemiSky: 0x5a6a99, hemiGround: 0x222833, hemiIntensity: 0.75,
+      sunDir: [0.1, 0.35, -0.6], cloud: 0.7, night: 0.4,
+      fogColor: 0x46557a, fogNear: 30, fogFar: 235, sunIntensity: 1.6,
+      hemiSky: 0x6d7fb5, hemiGround: 0x2a3140, hemiIntensity: 1.05,
     },
     ground: { base: 0x8e97a8, hi: 0xd8dee8, low: 0x4a5261, path: 0x5c6472 },
     music: 'storm',

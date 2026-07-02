@@ -228,6 +228,7 @@ export class Arena {
       fogColor: 0x010806, fogNear: 40, fogFar: 160, sunIntensity: 0.9,
       hemiSky: 0x1a5a3a, hemiGround: 0x0a1a10, hemiIntensity: 1,
     }, 1);
+    g.engine.setGrade(0xdcffe8, 1.1, 0.95);
     g.audio?.music('arena');
     this.state = { score: [0, 0], round: 1, live: false };
     g.showZoneBanner('THE NULL CHAMBER', '1v1 — max level, best gear, pure skill');

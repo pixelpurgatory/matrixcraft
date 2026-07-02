@@ -44,9 +44,11 @@ export class DungeonManager {
     this._build(D);
     this.active = { D, bossDead: false, entered: g.time };
     g.inDungeon = true;
-    g.engine.applyEnvironment(D.theme === 'glitch' || D.theme === 'spire'
+    const glitchy = D.theme === 'glitch' || D.theme === 'spire';
+    g.engine.applyEnvironment(glitchy
       ? { ...DUNGEON_ENV, fogColor: 0x061009, hemiSky: 0x1a4a30, sunColor: 0x39ff88 }
       : DUNGEON_ENV, 1);
+    g.engine.setGrade(glitchy ? 0xd8ffe4 : 0xfff2e2, glitchy ? 1.05 : 0.88, 0.85);
     // move party
     const spawn = { x: 0, z: 26 };
     g.player.pos.set(spawn.x, 0, spawn.z);

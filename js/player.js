@@ -55,8 +55,26 @@ export class Player extends Actor {
     this.maxHp = maxHp;
     this.hp = Math.min(this.maxHp, Math.round(this.maxHp * hpPct) || this.maxHp);
     this.avgIlvl = Math.round(GEAR_SLOTS.reduce((s, sl) => s + (this.gear[sl]?.ilvl || 0), 0) / GEAR_SLOTS.length);
+    this._weaponGlow();
     Events.emit('stats');
     Events.emit('hp', this);
+  }
+
+  // weapon glows with its quality tier (rare+); the mage gem lights up too
+  _weaponGlow() {
+    const rig = this.group.userData.rig;
+    const glow = rig?.weapon?.userData?.qGlow;
+    const w = this.gear.weapon;
+    const colors = { rare: 0x2f8fff, epic: 0xc45aff, legendary: 0xffa030 };
+    if (glow) {
+      if (w && colors[w.quality]) {
+        glow.visible = true;
+        glow.material.color.set(colors[w.quality]);
+        glow.material.opacity = w.quality === 'legendary' ? 0.95 : 0.7;
+      } else glow.visible = false;
+    }
+    const gemLight = rig?.weapon?.userData?.glow;
+    if (gemLight) gemLight.intensity = w ? { common: 0, uncommon: 0.15, rare: 0.4, epic: 0.7, legendary: 1.1 }[w.quality] ?? 0 : 0;
   }
 
   gainXp(amount) {

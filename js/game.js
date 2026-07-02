@@ -42,6 +42,7 @@ export class Game {
     this.inArena = false;
     this.veil = 0.06;
     this.glitchT = 0;
+    this.tod = 0.30; // time of day: 0 dawn, 0.25 noon, 0.5 dusk, 0.75 midnight (8-min cycle)
     this.scheduled = [];
     this.bubbles = [];
     this.paused = false;
@@ -112,6 +113,7 @@ export class Game {
     this.mobs = spawnZoneMobs(this, zoneId);
     this.npcs = spawnZoneNPCs(this, zoneId);
     this.engine.applyEnvironment(Z.env, 1);
+    this._applyZoneGrade();
     this.veil = Math.max(this.veil, Z.veilLevel * 0.5);
     const sp = this.world.landmarks.spawn;
     this.player.pos.set(sp.x, this.world.groundH(sp.x, sp.z), sp.z);
@@ -123,6 +125,47 @@ export class Game {
     this.net.send({ t: 'zone', zone: zoneId });
     if (!first) this.save();
     Events.emit('zone', Z);
+  }
+
+  _applyZoneGrade() {
+    const grade = {
+      eldergreen: [0xffede0, 1.14, 0.5],   // warm storybook
+      ashmoor: [0xe4fff8, 0.8, 0.62],      // desaturated teal gloom
+      veilspire: [0xdfe8ff, 0.96, 0.7],    // cold steel + glow
+    }[this.zoneId];
+    if (grade) this.engine.setGrade(grade[0], grade[1], grade[2]);
+  }
+
+  // ---------------- day/night cycle ----------------
+  _dayNight(dt) {
+    if (this.inDungeon || this.inArena) return;
+    this.tod = (this.tod + dt / 480) % 1;
+    const Z = ZONES[this.zoneId].env;
+    const az = this.tod * Math.PI * 2;
+    const el = Math.sin(az);                                   // sun elevation -1..1
+    const day = THREE.MathUtils.smoothstep(el, -0.12, 0.3);
+    const dusk = Math.max(0, 1 - Math.abs(el) * 3.5);          // golden-hour band at dawn/dusk
+    const nightF = Math.max(Z.night, 1 - day);
+    const mixC = (a, b, t) => new THREE.Color(a).lerp(new THREE.Color(b), t);
+    const N = { top: 0x0b1226, mid: 0x18223d, bot: 0x1e2635, sun: 0x9db0e0, fog: 0x101828 };
+    const gold = 0xff9a58;
+    const env = {
+      skyTop: mixC(Z.skyTop, N.top, 1 - day),
+      skyMid: mixC(mixC(Z.skyMid, gold, dusk * 0.55), N.mid, 1 - day),
+      skyBot: mixC(mixC(Z.skyBot, gold, dusk * 0.7), N.bot, 1 - day),
+      sunColor: mixC(mixC(Z.sunColor, gold, dusk * 0.8), N.sun, 1 - day),
+      sunDir: el >= 0
+        ? [Math.cos(az) * 0.9, Math.max(0.04, el), Math.sin(az) * 0.35]
+        : [-Math.cos(az) * 0.9, Math.max(0.1, -el * 0.8), -Math.sin(az) * 0.35], // moonlight
+      cloud: Z.cloud, night: nightF,
+      fogColor: mixC(Z.fogColor, N.fog, 1 - day),
+      fogNear: Z.fogNear, fogFar: Z.fogFar * (0.75 + 0.25 * day),
+      sunIntensity: Z.sunIntensity * (0.34 + 0.66 * day),
+      hemiSky: mixC(Z.hemiSky, N.mid, 1 - day),
+      hemiGround: Z.hemiGround,
+      hemiIntensity: Z.hemiIntensity * (0.58 + 0.42 * day),
+    };
+    this.engine.applyEnvironment(env, Math.min(1, dt * 2.5));
   }
 
   unlockZone(zoneId) {
@@ -453,6 +496,7 @@ export class Game {
       this.player.facing = this._owState.facing;
     }
     this.engine.applyEnvironment(ZONES[this.zoneId].env, 1);
+    this._applyZoneGrade();
     this.audio.music(ZONES[this.zoneId].music);
     this.setTarget(null);
   }
@@ -533,6 +577,8 @@ export class Game {
 
       // bubbles cleanup
       this.bubbles = this.bubbles.filter(b => b.until > t);
+
+      this._dayNight(dt);
 
       // dynamic music: bodhrán enters with combat, intensifies on bosses
       this.audio.setCombat(this.player.inCombat > t);
