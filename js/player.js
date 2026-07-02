@@ -212,7 +212,7 @@ export class Player extends Actor {
     const gy = g.groundY(this.pos);
     if (!this._leap) {
       if (this.pos.y > gy + 0.01 || this.vy > 0) {
-        this.vy -= 22 * dt;
+        this.vy -= 30 * dt;
         this.pos.y = Math.max(gy, this.pos.y + this.vy * dt);
         this.grounded = this.pos.y <= gy + 0.01;
       } else { this.pos.y = gy; this.grounded = true; this.vy = 0; }
@@ -230,7 +230,7 @@ export class Player extends Actor {
   }
 
   jump() {
-    if (this.grounded && this.alive && !this.ccd) { this.vy = 8.5; this.grounded = false; }
+    if (this.grounded && this.alive && !this.ccd) { this.vy = 9.8; this.grounded = false; }
   }
 
   // ---------- targeting ----------
